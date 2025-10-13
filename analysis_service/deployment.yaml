@@ -1,0 +1,98 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: analysis-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: analysis-service
+  template:
+    metadata:
+      labels:
+        app: analysis-service
+    spec:
+      serviceAccountName: analysis-service-sa
+      nodeSelector:
+        cloud.google.com/gke-accelerator: nvidia-tesla-t4
+      tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+      containers:
+      - name: analysis-service
+        image: gcr.io/mousedetection-f165e/analysis-service:latest
+        ports:
+        - containerPort: 8000
+        resources:
+          limits:
+            nvidia.com/gpu: 1
+            memory: "16Gi"
+            cpu: "4"
+          requests:
+            nvidia.com/gpu: 1
+            memory: "12Gi"
+            cpu: "3"
+        env:
+        - name: PORT
+          value: "8000"
+        - name: MONGO_URI
+          valueFrom:
+            secretKeyRef:
+              name: analysis-secrets
+              key: MONGO_URI
+        - name: GCS_BUCKET
+          valueFrom:
+            secretKeyRef:
+              name: analysis-secrets
+              key: GCS_BUCKET
+        - name: GOOGLE_CLOUD_PROJECT
+          valueFrom:
+            secretKeyRef:
+              name: analysis-secrets
+              key: GOOGLE_CLOUD_PROJECT
+        - name: USE_CUDA
+          valueFrom:
+            secretKeyRef:
+              name: analysis-secrets
+              key: USE_CUDA
+        - name: GPU_WORKERS
+          valueFrom:
+            secretKeyRef:
+              name: analysis-secrets
+              key: GPU_WORKERS
+        - name: CPU_WORKERS
+          valueFrom:
+            secretKeyRef:
+              name: analysis-secrets
+              key: CPU_WORKERS
+        - name: MODEL_PATH
+          valueFrom:
+            secretKeyRef:
+              name: analysis-secrets
+              key: MODEL_PATH
+        - name: PROGRESS_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: analysis-secrets
+              key: PROGRESS_SECRET
+        - name: BACKEND_URL
+          valueFrom:
+            secretKeyRef:
+              name: analysis-secrets
+              key: BACKEND_URL
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: analysis-service
+  annotations:
+    cloud.google.com/load-balancer-type: "Internal"
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 8000
+    targetPort: 8000
+    protocol: TCP
+  selector:
+    app: analysis-service
