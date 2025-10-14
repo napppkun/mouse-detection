@@ -309,30 +309,27 @@ class BaseMaze(ABC):
         )
     
     # Private helper methods
-    def _point_in_polygon(self, point: Tuple[int, int], polygon: List[Tuple[int, int]]) -> bool:
-        """
-        Check if a point is inside a polygon using ray casting algorithm.
-        
-        Args:
-            point: (x, y) coordinates of the point
-            polygon: List of (x, y) coordinates defining the polygon
-            
-        Returns:
-            True if point is inside polygon, False otherwise
-        """
+    def _point_in_polygon_with_counter(self, point: Tuple[int, int], polygon: List[Tuple[int, int]]) -> bool:
+        """Version with explicit counter for better understanding"""
         x, y = point
         n = len(polygon)
-        inside = False
+        intersection_count = 0  # นับจำนวนครั้งที่ตัด
         p1x, p1y = polygon[0]
+    
         for i in range(1, n + 1):
             p2x, p2y = polygon[i % n]
+        
+            # เงื่อนไขเดียวกัน
             if y > min(p1y, p2y) and y <= max(p1y, p2y) and x <= max(p1x, p2x):
                 if p1y != p2y:
                     xinters = (y - p1y) * (p2x - p1x) / (p2y - p1y) + p1x
                     if p1x == p2x or x <= xinters:
-                        inside = not inside
+                        intersection_count += 1  # นับเพิ่ม
+        
             p1x, p1y = p2x, p2y
-        return inside
+    
+        # ถ้าตัดเป็นจำนวนคี่ = อยู่ภายใน
+        return intersection_count % 2 == 1
     
     def _get_polygon_center(self, points: np.ndarray) -> Tuple[int, int]:
         """
