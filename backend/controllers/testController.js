@@ -95,6 +95,7 @@ async function ensureVideoDoc(v) {
       processedPath processedGcsPath
       mouseCode status trimStartSec trimEndSec
       dayIndex releaseQuadrant targetQuadrant
+      duration
     `
       )
       .lean();
@@ -1051,6 +1052,12 @@ export const buildTestReport = async (req, res) => {
       return Number.isFinite(n) ? Number(n.toFixed(3)) : 0;
     };
 
+    // helper: แปลงเป็นจำนวนเต็ม (วินาที) อย่างปลอดภัย
+    const asInt = (v) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? Math.round(n) : 0; // หรือใช้ Math.trunc(n) ถ้าไม่อยากปัดขึ้น/ลง
+    };
+
     // helper: ชื่อชีต Excel ต้องสั้น <= 31 และไม่มีอักขระต้องห้าม
     const sheetNameSafe = (s) =>
       String(s || "")
@@ -1069,7 +1076,7 @@ export const buildTestReport = async (req, res) => {
 
     // mapping: videoId -> groupName / mouseCode -> groupName
     const vidDocs = await Video.find({ ownerUid, test: id })
-      .select("_id mouseCode dailyRecord")
+      .select("_id mouseCode dailyRecord originalName filename duration trimStartSec trimEndSec")
       .populate({
         path: "dailyRecord",
         select: "group",
@@ -1090,8 +1097,12 @@ export const buildTestReport = async (req, res) => {
         }
       }
       const vname = v.originalName || v.filename || "";
-      const vdur = Number(v.duration) || 0;
-      videoMetaById.set(String(v._id), { name: vname, duration: vdur });
+      const vdur = Number(v.durationOriginalSec ?? v.duration);
+      let durationSec = Number.isFinite(vdur) ? vdur
+        : Number.isFinite(Number(v.trimEndSec - v.trimStartSec))
+          ? Number(v.trimEndSec - v.trimStartSec)
+          : 0;
+      videoMetaById.set(String(v._id), { name: vname, duration: durationSec });
     }
 
     const fallbackGroupName =

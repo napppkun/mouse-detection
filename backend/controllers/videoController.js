@@ -13,6 +13,7 @@ import {
 } from "../models/resultModel.js";
 import axios from "axios";
 import { Storage } from "@google-cloud/storage";
+import { v4 as uuidv4 } from "uuid";
 
 const storage = new Storage({
   projectId: process.env.GOOGLE_CLOUD_PROJECT,
@@ -35,7 +36,8 @@ export async function registerUploadedVideo(req, res) {
       size,
       mouseCode,
       dailyRecordId,
-      testId
+      testId,
+      durationSec,
     } = req.body || {};
 
     if (!objectPath || !originalName || !mimetype || !size || !mouseCode || !dailyRecordId) {
@@ -63,6 +65,10 @@ export async function registerUploadedVideo(req, res) {
       gcsPath: objectPath,
       size,
       mimetype,
+      // เก็บเป็น duration ของไฟล์ต้นฉบับ
+      duration: Number.isFinite(Number(durationSec)) ? Number(durationSec) : undefined,
+      durationOriginalSec: Number.isFinite(Number(durationSec)) ? Number(durationSec) : undefined,
+      durationSource: Number.isFinite(Number(durationSec)) ? "original" : "unknown",
       mouseCode,
       dailyRecord: dr._id,
       test: testId || undefined,
@@ -112,6 +118,7 @@ export const uploadVideo = async (req, res) => {
       dayIndex, // MWM
       releaseQuadrant, // MWM
       targetQuadrant, // MWM
+      durationSec,
     } = req.body;
 
     // verify daily record
@@ -128,7 +135,9 @@ export const uploadVideo = async (req, res) => {
       gcsPath: uniqueFilename,
       size: req.file.size,
       mimetype: req.file.mimetype,
-      duration: undefined, // ถ้ามี extractor ฝั่ง analysis ค่อยอัปเดต
+      duration: Number.isFinite(Number(durationSec)) ? Number(durationSec) : undefined,
+      durationOriginalSec: Number.isFinite(Number(durationSec)) ? Number(durationSec) : undefined,
+      durationSource: Number.isFinite(Number(durationSec)) ? "original" : "unknown",
       mouseCode,
       dailyRecord: dr._id,
       test: testId || undefined,
@@ -442,14 +451,14 @@ export const internalReport = async (req, res) => {
         const mz = metricsObj?.epm
           ? "epm"
           : metricsObj?.ymaze
-          ? "ymaze"
-          : metricsObj?.mwm
-          ? "mwm"
-          : mt.includes("morris") || mt.includes("mwm")
-          ? "mwm"
-          : mt.includes("y")
-          ? "ymaze"
-          : "epm";
+            ? "ymaze"
+            : metricsObj?.mwm
+              ? "mwm"
+              : mt.includes("morris") || mt.includes("mwm")
+                ? "mwm"
+                : mt.includes("y")
+                  ? "ymaze"
+                  : "epm";
 
         let Model, metricPayload;
         if (mz === "epm") {
@@ -465,10 +474,10 @@ export const internalReport = async (req, res) => {
           const getQ = (k) =>
             Number(
               perq?.[k] ??
-                m?.[k] ??
-                m?.[`quadrant_${k.slice(1)}`] ??
-                m?.quadrant_times?.[k] ??
-                0
+              m?.[k] ??
+              m?.[`quadrant_${k.slice(1)}`] ??
+              m?.quadrant_times?.[k] ??
+              0
             );
           metricPayload = {
             quadrants: {
@@ -524,9 +533,9 @@ export const internalReport = async (req, res) => {
         { _id: v.test, ownerUid: v.ownerUid },
         next === "processing"
           ? {
-              $set: { status: "processing" },
-              $unset: { processingCompletedAt: "" },
-            }
+            $set: { status: "processing" },
+            $unset: { processingCompletedAt: "" },
+          }
           : { $set: { status: next, processingCompletedAt: new Date() } }
       );
 
@@ -544,10 +553,10 @@ export const internalReport = async (req, res) => {
           bt.includes("elevatedplusmaze") || bt.includes("epm")
             ? "epm"
             : bt.includes("ymaze")
-            ? "ymaze"
-            : bt.includes("mwm") || bt.includes("morriswatermaze")
-            ? "mwm"
-            : "epm"; // default epm
+              ? "ymaze"
+              : bt.includes("mwm") || bt.includes("morriswatermaze")
+                ? "mwm"
+                : "epm"; // default epm
 
         // 1) ดึงจาก Video.analysisResults ก่อน
         let vidsAll = await Video.find({
@@ -609,10 +618,10 @@ export const internalReport = async (req, res) => {
               const m = r.epm
                 ? { epm: r.epm }
                 : r.ymaze
-                ? { ymaze: r.ymaze }
-                : r.mwm
-                ? { mwm: r.mwm }
-                : null;
+                  ? { ymaze: r.ymaze }
+                  : r.mwm
+                    ? { mwm: r.mwm }
+                    : null;
               return m ? { mouseCode: r.mouseCode || "", metrics: m } : null;
             })
             .filter(Boolean);
