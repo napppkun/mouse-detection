@@ -1,0 +1,207 @@
+:root {
+    --auth-bg: #ffffff;
+    --auth-surface: #f3f4f6;
+    --auth-card-width: 420px;
+    --auth-radius: 20px;
+    --auth-radius-input: 12px;
+    --auth-text: #111827;
+    --auth-muted: #6b7280;
+    --auth-border: #ecedec;
+    --auth-accent: #2d79f3;
+    --auth-primary: #151717;
+    --auth-shadow: 0 10px 30px rgba(0,0,0,.06);
+  }
+  
+  .auth-screen {
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    background: var(--auth-surface);
+    padding: 24px;
+  }
+  
+  .form {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    background-color: var(--auth-bg);
+    padding: 26px;
+    width: var(--auth-card-width);
+    border-radius: var(--auth-radius);
+    box-shadow: var(--auth-shadow);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  }
+  
+  .form h2 { margin: 0 0 4px; font-size: 22px; font-weight: 700; color: var(--auth-text); }
+  label { font-size: 14px; color: var(--auth-text); font-weight: 600; }
+  
+  .inputForm {
+    border: 1.5px solid var(--auth-border);
+    border-radius: var(--auth-radius-input);
+    height: 50px;
+    display: flex;
+    align-items: center;
+    padding: 0 14px;
+    gap: 10px;
+    transition: .2s ease-in-out;
+    background: #fff;
+  }
+  .inputForm:focus-within { border-color: var(--auth-accent); }
+  
+  .inputIcon { width: 18px; height: 18px; opacity: .6; }
+  .input { border: none; outline: none; width: 100%; height: 100%; font-size: 14px; background: transparent; }
+  
+  .row-between { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 14px; }
+  .row-between a { color: #2563eb; text-decoration: none; }
+  .row-between a:hover { text-decoration: underline; }
+  
+  .button-submit {
+    margin: 6px 0 2px;
+    background-color: var(--auth-primary);
+    border: none;
+    color: white;
+    font-size: 15px;
+    font-weight: 600;
+    border-radius: 10px;
+    height: 48px;
+    width: 100%;
+    cursor: pointer;
+  }
+  
+  .text-muted { text-align: center; color: var(--auth-text); font-size: 14px; margin: 2px 0 0; }
+  .text-muted a { color: #2563eb; text-decoration: none; font-weight: 600; }
+  .text-muted a:hover { text-decoration: underline; }
+  
+  .divider {
+    display: grid; grid-template-columns: 1fr auto 1fr;
+    align-items: center; gap: 12px; margin-top: 6px;
+    color: var(--auth-muted); font-size: 13px;
+  }
+  .divider::before, .divider::after { content:""; height:1px; background:#e5e7eb; display:block; }
+  
+  .social-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  
+  /* namespaced button to avoid collision */
+  .auth-btn {
+    height: 50px; border-radius: 12px;
+    display: flex; justify-content: center; align-items: center;
+    font-weight: 600; gap: 10px;
+    border: 1px solid #ededef; background: white;
+    cursor: pointer; transition: .2s ease-in-out;
+  }
+  .auth-btn:hover { border-color: var(--auth-accent); }
+  .auth-btn img { width: 20px; height: 20px; }
+  
+  /* === Proportions: Uiverse (JohnnyCSilva) – override only === */
+  .form {
+    width: 350px;
+    padding: 25px;
+    gap: 8px;
+    border-radius: 20px;
+  }
+  
+  /* ช่องกรอก */
+  .inputForm {
+    height: 45px;
+    border-radius: 10px;
+    padding-left: 10px; /* ให้ตำแหน่ง text/ไอคอนเหมือนต้นฉบับ */
+  }
+  .input {
+    height: 100%;
+    border-radius: 10px;
+  }
+  
+  /* ปุ่มหลัก */
+  .button-submit {
+    height: 45px;
+    width: 100%;
+    border-radius: 10px;
+    margin: 20px 0 10px 0;
+    font-size: 15px;
+    font-weight: 500;
+  }
+  
+  /* ข้อความเล็ก */
+  .p, .text-muted {
+    font-size: 14px;
+    margin: 5px 0;
+    color: black; /* ถ้าต้องการเหมือนต้นฉบับ */
+  }
+  
+  /* ปุ่มโซเชียล (เรายังใช้ class="auth-btn" ใน JSX) */
+  .auth-btn {
+    height: 45px;
+    width: 100%;
+    border-radius: 10px;
+    font-weight: 500;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid #ededef;
+    background: white;
+    cursor: pointer;
+    transition: .2s ease-in-out;
+  }
+  .auth-btn:hover { border-color: #2d79f3; }
+  
+  /* ถ้าปุ่ม Google มีอันเดียว ให้จัดกึ่งกลาง */
+  .social-grid.one { grid-template-columns: 1fr; justify-items: center; }
+  
+  /* (ทางเลือก) เผื่อไปใช้ชื่อ .btn ที่อื่น ให้สไตล์เท่า auth-btn */
+  .btn {
+    margin-top: 10px;
+    width: 100%;
+    height: 50px;
+    border-radius: 10px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-weight: 500;
+    gap: 10px;
+    border: 1px solid #ededef;
+    background-color: white;
+    cursor: pointer;
+    transition: 0.2s ease-in-out;
+  }
+  .btn:hover { border: 1px solid #2d79f3; }
+  
+  /* ==== Home page UI ==== */
+  .home-screen {
+    min-height: 100vh;
+    background: #f3f4f6;
+    padding: 24px;
+    display: grid;
+    place-items: start center;
+  }
+  
+  .card {
+    width: min(760px, 92vw);
+    background: #fff;
+    border-radius: 16px;
+    box-shadow: 0 10px 30px rgba(0,0,0,.06);
+    padding: 20px 24px;
+  }
+  
+  .card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+  .card-title { margin: 0; font-weight: 700; font-size: 22px; color: #111827; }
+  
+  .chip {
+    display: inline-flex; align-items: center; height: 28px;
+    padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+  }
+  .chip-ok  { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+  .chip-bad { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+  
+  .info-grid {
+    display: grid; grid-template-columns: 140px 1fr; gap: 10px 16px; margin-top: 8px;
+  }
+  .info-row span { color: #6b7280; }
+  .muted { color: #6b7280; }
+  .error { color: #ef4444; margin: 6px 0; }
