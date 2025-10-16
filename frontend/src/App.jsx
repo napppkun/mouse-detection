@@ -26,7 +26,6 @@ import Profile from "./pages/Profile";
 import ManageMice from "./pages/ManageMice";
 import CreateMouse from "./pages/CreateMouse";
 import EditMouse from "./pages/EditMouse";
-import ExperimentDetail from "./pages/ExperimentDetail";
 import DailyRecord from "./pages/DailyRecord";
 import EditDailyRecord from "./pages/EditDailyRecord";
 import MouseDetail from "./pages/MouseDetail";
@@ -82,7 +81,6 @@ export default function App() {
             <Route path="manage-mice" element={<ManageMice />} />
             <Route path="create-mouse" element={<CreateMouse />} />
             <Route path="edit-mouse/:id" element={<EditMouse />} />
-            <Route path="experiment/:id" element={<ExperimentDetail />} />
             <Route path="mouse/:id/daily-record" element={<DailyRecord />} />
             <Route path="mouse/:id" element={<MouseDetail />} />
             <Route path="manage-test" element={<ManageTest />} />
