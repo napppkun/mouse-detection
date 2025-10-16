@@ -89,24 +89,6 @@ def process_video_analysis(
         cap.release()
         raise RuntimeError("Failed to open MP4 writer (tried mp4v/avc1/H264)")
 
-    # if not vw.isOpened():
-    #     vw.release()
-    #     out_path_avi = os.path.join(out_dir, f"{maze_type}_results_{ts}_mjpg.avi")
-    #     fourcc = cv2.VideoWriter_fourcc(*"MJPG")
-    #     vw = cv2.VideoWriter(out_path_avi, fourcc, fps, (w, h))
-    # if not vw.isOpened():
-    #     vw.release()
-    #     out_path_mp4 = os.path.join(out_dir, f"{maze_type}_results_{ts}.mp4")
-    #     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    #     vw = cv2.VideoWriter(out_path_mp4, fourcc, fps, (w, h))
-    #     out_path = out_path_mp4
-    # else:
-    #     out_path = out_path_avi
-
-    # if not vw.isOpened():
-    #     cap.release()
-    #     raise RuntimeError("Failed to open VideoWriter with any codec")
-
     # กลับไปเริ่มจาก start_frame
     cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
 
