@@ -10,6 +10,7 @@ import {
   getVideo,
   updateVideo,
   deleteVideo,
+  saveTrim,
   getVideoAnalysis,
   internalReport,
 } from "../controllers/videoController.js";
@@ -75,6 +76,8 @@ router.get("/:id/analysis", verifyFirebase, getVideoAnalysis);
 
 // webhook ภายใน: ไม่ต้อง verifyFirebase ใช้ secret แทน
 router.post("/internal/report", internalReport);
+
+router.patch("/:id/trim", verifyFirebase, saveTrim);
 
 // Error handler ของ multer
 router.use((err, req, res, next) => {

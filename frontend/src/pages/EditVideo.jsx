@@ -1,5 +1,5 @@
 // src/pages/EditVideo.jsx
-import { Play, Pause, Trash2, Send, Square, Circle as CircleIcon, RotateCw } from "lucide-react";
+import { Play, Pause, Trash2, Send, Square, Circle as CircleIcon, Save, ChevronDown } from "lucide-react";
 import { useState, useRef, useEffect, useMemo } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { auth } from "../firebase";
@@ -81,6 +81,15 @@ export default function EditVideo() {
   const [error, setError] = useState("");
   const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
   const [durations, setDurations] = useState({});
+  const [template, setTemplate] = useState(null);           // template ของ test ถ้ามี
+
+  // ── Ellipse template (MWM)
+  const [mwmTemplates, setMwmTemplates] = useState({}); // {key: {cx,cy,rx,ry,rotationDeg}}
+  const [mwmToolOn, setMwmToolOn] = useState(mazeType === "MorrisWaterMaze" && !template);
+  const [tplDragMode, setTplDragMode] = useState(null); // 'move'|'resizeX'|'resizeY'|'rotate'
+  const [tplDragStart, setTplDragStart] = useState({ x: 0, y: 0 });
+  const [trimSaved, setTrimSaved] = useState({});           // map: videoId -> true เมื่อบันทึกแล้ว
+  const [videoDropdownOpen, setVideoDropdownOpen] = useState(false);
 
   // ── Rectangles (EPM/Y)
   const [isDrawMode, setIsDrawMode] = useState(true);
@@ -93,12 +102,6 @@ export default function EditVideo() {
   const [isDrawing, setIsDrawing] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [currentDrawRect, setCurrentDrawRect] = useState(null);
-
-  // ── Ellipse template (MWM)
-  const [mwmTemplates, setMwmTemplates] = useState({}); // {key: {cx,cy,rx,ry,rotationDeg}}
-  const [mwmToolOn, setMwmToolOn] = useState(mazeType === "MorrisWaterMaze");
-  const [tplDragMode, setTplDragMode] = useState(null); // 'move'|'resizeX'|'resizeY'|'rotate'
-  const [tplDragStart, setTplDragStart] = useState({ x: 0, y: 0 });
 
   // ── Trim drag
   const [isTrimDragging, setIsTrimDragging] = useState(false);
@@ -140,6 +143,22 @@ export default function EditVideo() {
   };
   const regionSpec = MAZE_REGIONS[mazeType] || [];
 
+  // ถ้ามี template กลาง (rectangles หรือ ellipse) ถือว่าล็อกการวาด
+  const hasGlobalTemplate = useMemo(() => {
+    const t = template?.template || template || {};
+    const hasRects = Array.isArray(t.rectangles || t.boxes) && (t.rectangles?.length || t.boxes?.length);
+    const hasEllipse = !!(t.ellipse || t.ellipseTemplate);
+    return !!(hasRects || hasEllipse);
+  }, [template]);
+
+  // เมื่อมี template กลางแล้ว ให้ปิดเครื่องมือ MWM ทันที
+  useEffect(() => {
+    if (mazeType === "MorrisWaterMaze" && hasGlobalTemplate) {
+      setMwmToolOn(false);
+    }
+  }, [mazeType, hasGlobalTemplate]);
+
+
   // ── Helpers for current video/template/rectangles
   const currentVideo = useMemo(
     () => (videoPairs?.length ? videoPairs[currentVideoIndex] || videoPairs[0] : null),
@@ -160,14 +179,31 @@ export default function EditVideo() {
 
   const hasTemplateNow = mazeType === "MorrisWaterMaze" && !!getCurrentTemplate();
 
-  // ต้องมี “template” สำหรับทุกวิดีโอ ถ้าเป็น MWM (เลิกใช้ rect)
   const allConfigured = useMemo(() => {
     if (!videoPairs?.length) return false;
-    if (mazeType !== "MorrisWaterMaze") {
-      return videoPairs.every((_, idx) => (rectangles[keyForIndex(idx)] || []).length === regionSpec.length);
-    }
-    return videoPairs.every((_, idx) => !!mwmTemplates[keyForIndex(idx)]);
-  }, [videoPairs, rectangles, mwmTemplates, regionSpec.length, mazeType]);
+    const trimsOk = (videoPairs || []).every(v => !!(trimSaved[v.videoId || v._id]));
+    if (hasGlobalTemplate) return trimsOk; // มี template กลางจริง ๆ ต้อง trim ให้ครบ
+    const regionsOk = mazeType !== "MorrisWaterMaze"
+      ? (videoPairs || []).every((_, idx) => (rectangles[keyForIndex(idx)] || []).length === regionSpec.length)
+      : (videoPairs || []).every((_, idx) => !!mwmTemplates[keyForIndex(idx)]);
+    return trimsOk && regionsOk;
+  }, [videoPairs, rectangles, mwmTemplates, regionSpec.length, mazeType, hasGlobalTemplate, trimSaved]);
+
+  // โหลด template (ถ้ามี)
+  useEffect(() => {
+    (async () => {
+      const u = auth.currentUser; if (!u) return;
+      const idToken = await u.getIdToken(true);
+      const res = await fetch(`${BACKEND_URL}/api/templates/by-test/${testId}`, {
+        headers: { Authorization: `Bearer ${idToken}` }
+      });
+      const json = await res.json();
+      if (json?.data) {
+        setTemplate(json.data); // { behaviorTest, rectangles[], ellipse{} }
+      }
+    })();
+  }, [testId]);
+
 
   // ── Load video URL
   useEffect(() => {
@@ -463,6 +499,10 @@ export default function EditVideo() {
   // ── Overlay mousedown
   const onOverlayMouseDown = (e) => {
     const v = videoRef.current; if (!v || !v.videoWidth) return;
+    if (hasGlobalTemplate) return; // ล็อกทั้งหมดเมื่อมี template กลาง
+
+    // กันการวาดเมื่อปิด Define Regions (EPM/Y เท่านั้น)
+    if (mazeType !== "MorrisWaterMaze" && !isDrawMode) return;
 
     // MWM: create/move ellipse
     if (mazeType === "MorrisWaterMaze" && mwmToolOn) {
@@ -522,7 +562,7 @@ export default function EditVideo() {
   };
 
   const onRectMouseDown = (e, id, action = "move", corner = null) => {
-    if (!isDrawMode) return;
+    if (!isDrawMode || hasGlobalTemplate) return;
     e.stopPropagation();
     e.preventDefault();
     setSelectedRect(id);
@@ -575,6 +615,33 @@ export default function EditVideo() {
     return [start, end];
   };
 
+  const onSaveTrim = async () => {
+    try {
+      const vid = curVidId;
+      if (!vid) throw new Error("Missing video id");
+      const startSec = Math.max(0, Math.min(trimStart, duration || 0));
+      const endSec = Math.max(startSec + 0.1, Math.min(trimEnd || duration || 0, (duration || 0)));
+
+      const u = auth.currentUser;
+      if (!u) throw new Error("Please log in");
+      const idToken = await u.getIdToken(true);
+
+      const res = await fetch(`${BACKEND_URL}/api/videos/${vid}/trim`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ startSec, endSec }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.message || "Failed to save trim");
+
+      setTrims((p) => ({ ...p, [vid]: { start: startSec, end: endSec } }));
+      setTrimSaved((p) => ({ ...p, [vid]: true }));
+      setError("");
+    } catch (e) {
+      setError(e?.message || "Save trim failed");
+    }
+  };
+
   // ── Process
   const processAllVideos = async () => {
     if (!allConfigured) { setError("Please define regions (or MWM template) for all videos first."); return; }
@@ -586,7 +653,7 @@ export default function EditVideo() {
     }
     if (!testId) { setError("Missing testId. Please go back to Create Test and try again."); return; }
 
-    // สำหรับ EPM/Y: ส่ง rectangles ตามเดิม
+    // สำหรับ EPM/Y: ส่ง rectangles ตามเดิม + เติม fallback จาก "template กลาง" ถ้ายังไม่มี
     // สำหรับ MWM: ไม่ส่ง rectangles แล้ว (ปล่อยเป็น {}), ส่งแต่ template + targetQuadrant
     const rectanglesByMouse = {};
     if (mazeType !== "MorrisWaterMaze") {
@@ -604,19 +671,45 @@ export default function EditVideo() {
       });
     }
 
+    // Fallback จาก template กลาง: ถ้า mouse ไหนยังไม่มี/ว่าง ให้เติมจาก template.rectangles
+    const globalRects =
+      template?.rectangles ||
+      template?.template?.rectangles ||
+      template?.boxes; // เผื่อ schema เก่า
+
+    if (Array.isArray(globalRects) && globalRects.length) {
+      (videoPairs || []).forEach((vp) => {
+        if (!vp.mouseCode) return;
+        const cur = rectanglesByMouse[vp.mouseCode];
+        const needFallback = !Array.isArray(cur) || cur.length === 0;
+        if (needFallback) {
+          rectanglesByMouse[vp.mouseCode] = globalRects.map((r) => ({
+            type: r.type,
+            x: Math.round(r.x),
+            y: Math.round(r.y),
+            width: Math.round(r.width),
+            height: Math.round(r.height),
+            rotation: Math.round(r.rotation || 0),
+          }));
+        }
+      });
+    }
+
     // MWM template per mouse
     const mwmTemplateByMouse = {};
     if (mazeType === "MorrisWaterMaze") {
+      const globalTpl = template?.ellipse || template?.template?.ellipse || template?.ellipseTemplate;
       (videoPairs || []).forEach((vp, idx) => {
-        const k = keyForIndex(idx);
-        const t = mwmTemplates[k];
-        if (t && vp.mouseCode) {
-          mwmTemplateByMouse[vp.mouseCode] = {
-            cx: Math.round(t.cx), cy: Math.round(t.cy),
-            rx: Math.round(t.rx), ry: Math.round(t.ry),
-            rotationDeg: Math.round(t.rotationDeg || 0),
-          };
-        }
+        if (!vp.mouseCode) return;
+        const perVideoTpl = mwmTemplates[keyForIndex(idx)] || globalTpl;
+        if (!perVideoTpl) return;
+        mwmTemplateByMouse[vp.mouseCode] = {
+          cx: Math.round(perVideoTpl.cx),
+          cy: Math.round(perVideoTpl.cy),
+          rx: Math.round(perVideoTpl.rx ?? perVideoTpl.r),
+          ry: Math.round(perVideoTpl.ry ?? perVideoTpl.r),
+          rotationDeg: Math.round(perVideoTpl.rotationDeg || 0),
+        };
       });
     }
 
@@ -699,10 +792,30 @@ export default function EditVideo() {
                 )}
               </div>
 
+              {/*Dropdown Video List*/}
               {videoPairs?.length > 1 && (
-                <div className="btn-group">
-                  <button className="btn" disabled={currentVideoIndex === 0} onClick={() => setCurrentVideoIndex((i) => Math.max(0, i - 1))}>Prev</button>
-                  <button className="btn" disabled={currentVideoIndex === videoPairs.length - 1} onClick={() => setCurrentVideoIndex((i) => Math.min(videoPairs.length - 1, i + 1))}>Next</button>
+                <div style={{ position: "relative" }}>
+                  <button className="btn" onClick={() => setVideoDropdownOpen(v => !v)} aria-haspopup="listbox" aria-expanded={videoDropdownOpen}>
+                    Select Video <ChevronDown size={14} style={{ marginLeft: 6 }} />
+                  </button>
+                  {videoDropdownOpen && (
+                    <div className="card" role="listbox" style={{ position: "absolute", right: 0, zIndex: 50, minWidth: 280, maxHeight: 280, overflow: "auto" }}>
+                      {videoPairs.map((v, idx) => {
+                        const id = v.videoId || v._id;
+                        const label = v.mouseCode ? `Mouse ${v.mouseCode}` : (v.originalName || v.video?.name || id);
+                        const done = !!trimSaved[id];
+                        const isCur = idx === currentVideoIndex;
+                        return (
+                          <button key={id} className={`select-option ${isCur ? "is-selected" : ""}`} role="option" onClick={() => { setCurrentVideoIndex(idx); setVideoDropdownOpen(false); }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", width: "100%" }}>
+                              <span>{label}</span>
+                              <span className="muted">{done ? "✓" : ""}</span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -713,7 +826,7 @@ export default function EditVideo() {
           {/* Toolbar */}
           <div className="toolbar" style={{ marginBottom: 12, gap: 8, flexWrap: "wrap" }}>
             {/* EPM/Y: Define Regions */}
-            {mazeType !== "MorrisWaterMaze" && (
+            {mazeType !== "MorrisWaterMaze" && !hasGlobalTemplate && (
               <button
                 className={`seg-btn ${isDrawMode ? "active" : ""}`}
                 onClick={() => setIsDrawMode((v) => !v)}
@@ -733,7 +846,7 @@ export default function EditVideo() {
             )}
 
             {/* MWM ellipse template */}
-            {mazeType === "MorrisWaterMaze" && (
+            {mazeType === "MorrisWaterMaze" && !hasGlobalTemplate && (
               <div className="btn-group" style={{ gap: 8 }}>
                 <button className={`btn ${mwmToolOn ? "primary" : ""}`} onClick={() => setMwmToolOn((v) => !v)} title="Toggle MWM ellipse tool">
                   <CircleIcon size={16} /> <span style={{ marginLeft: 6 }}>MWM Ellipse Template</span> {mwmToolOn ? "ON" : "OFF"}
@@ -745,6 +858,12 @@ export default function EditVideo() {
             )}
 
             <div style={{ flex: 1 }} />
+
+            {hasGlobalTemplate && (
+              <div className="muted">
+                Template for this test is already set. Regions are locked; you only need to trim each video.
+              </div>
+            )}
 
             {allConfigured && (
               <button className="btn primary" disabled={isProcessing} onClick={processAllVideos}>
@@ -772,13 +891,13 @@ export default function EditVideo() {
                 position: "absolute",
                 inset: 0,
                 zIndex: 10,
-                cursor:
-                  mazeType === "MorrisWaterMaze" && mwmToolOn
+                pointerEvents: hasGlobalTemplate ? "none" : "auto",
+                cursor: hasGlobalTemplate
+                  ? "default"
+                  : mazeType === "MorrisWaterMaze" && mwmToolOn
                     ? "default"
-                    : isDrawMode
-                      ? activeRegionType
-                        ? "crosshair"
-                        : "default"
+                    : isDrawMode && activeRegionType
+                      ? "crosshair"
                       : "default",
               }}
             >
@@ -815,11 +934,12 @@ export default function EditVideo() {
                                 <path d={sectorPathLocal(rxS, ryS, a1, a2)}
                                   fill="#0ea5e9" fillOpacity="0.40" stroke="none" pointerEvents="none" />
 
-                                {/* วงรี + crosshairs + handles (เหมือนเดิม) */}
+                                {/* วงรี + crosshairs + handles */}
                                 <ellipse cx={0} cy={0} rx={rxS} ry={ryS}
                                   fill="none" stroke="#0ea5e9" strokeWidth="2"
-                                  style={{ cursor: "move", pointerEvents: "all" }}
+                                  style={{ cursor: hasGlobalTemplate ? "default" : "move", pointerEvents: hasGlobalTemplate ? "none" : "all" }}
                                   onMouseDown={(e) => {
+                                    if (hasGlobalTemplate) return;
                                     e.stopPropagation();
                                     const b = getVideoContentBox(videoRef.current);
                                     const vx = (e.clientX - b.left) / b.scaleX;
@@ -829,15 +949,15 @@ export default function EditVideo() {
                                 <line x1={-rxS} y1={0} x2={rxS} y2={0} stroke="#0ea5e9" strokeWidth="1.5" />
                                 <line x1={0} y1={-ryS} x2={0} y2={ryS} stroke="#0ea5e9" strokeWidth="1.5" />
                                 <circle cx={rxS} cy={0} r="6" fill="#0ea5e9"
-                                  style={{ cursor: "ew-resize", pointerEvents: "all" }}
-                                  onMouseDown={(e) => { e.stopPropagation(); setTplDragMode("resizeX"); }} />
+                                  style={{ cursor: "ew-resize", pointerEvents: hasGlobalTemplate ? "none" : "all" }}
+                                  onMouseDown={(e) => { if (hasGlobalTemplate) return; e.stopPropagation(); setTplDragMode("resizeX"); }} />
                                 <circle cx={0} cy={-ryS} r="6" fill="#0ea5e9"
-                                  style={{ cursor: "ns-resize", pointerEvents: "all" }}
-                                  onMouseDown={(e) => { e.stopPropagation(); setTplDragMode("resizeY"); }} />
+                                  style={{ cursor: "ns-resize", pointerEvents: hasGlobalTemplate ? "none" : "all" }}
+                                  onMouseDown={(e) => { if (hasGlobalTemplate) return; e.stopPropagation(); setTplDragMode("resizeY"); }} />
                                 <line x1={0} y1={-ryS} x2={0} y2={-ryS - 24} stroke="#0ea5e9" strokeDasharray="4,4" strokeWidth="1" />
                                 <circle cx={0} cy={-ryS - 24} r="6" fill="#0ea5e9"
-                                  style={{ cursor: "crosshair", pointerEvents: "all" }}
-                                  onMouseDown={(e) => { e.stopPropagation(); setTplDragMode("rotate"); }} />
+                                  style={{ cursor: "crosshair", pointerEvents: hasGlobalTemplate ? "none" : "all" }}
+                                  onMouseDown={(e) => { if (hasGlobalTemplate) return; e.stopPropagation(); setTplDragMode("rotate"); }} />
 
                                 {/* --- LABELS (ผูกกับควอดแรนต์เดียวกัน) --- */}
                                 {["Q1", "Q2", "Q3", "Q4"].map(q => {
@@ -950,7 +1070,7 @@ export default function EditVideo() {
                                   stroke={stroke}
                                   strokeWidth={sel ? 2.5 : 1.8}
                                   onMouseDown={(e) => onRectMouseDown(e, r.id, "move")}
-                                  style={{ cursor: "move", pointerEvents: "all" }}
+                                  style={{ cursor: hasGlobalTemplate ? "default" : "move", pointerEvents: "all" }}
                                 />
                                 {/* เส้นประสีขาวบาง ๆ ทับ เมื่อถูกเลือก */}
                                 {sel && (
@@ -964,8 +1084,8 @@ export default function EditVideo() {
                                   />
                                 )}
 
-                                {/* resize handles (ใช้สีเดียวกับ region ไม่ใช้สีดำ) */}
-                                {corners.map((c) => {
+                                {/* resize handles */}
+                                {!hasGlobalTemplate && corners.map((c) => {
                                   const rr = rotPt(c.x, c.y);
                                   return (
                                     <rect
@@ -982,21 +1102,25 @@ export default function EditVideo() {
                                 })}
 
                                 {/* rotate handle */}
-                                <line
-                                  x1={topMid.x} y1={topMid.y}
-                                  x2={rotHandle.x} y2={rotHandle.y}
-                                  stroke={stroke}
-                                  strokeDasharray="4,4"
-                                  strokeWidth="1"
-                                />
-                                <circle
-                                  cx={rotHandle.x} cy={rotHandle.y} r="7"
-                                  fill={stroke}
-                                  stroke="#fff"
-                                  strokeWidth="1"
-                                  onMouseDown={(e) => onRectMouseDown(e, r.id, "rotate")}
-                                  style={{ cursor: "crosshair", pointerEvents: "all" }}
-                                />
+                                {!hasGlobalTemplate && (
+                                  <>
+                                    <line
+                                      x1={topMid.x} y1={topMid.y}
+                                      x2={rotHandle.x} y2={rotHandle.y}
+                                      stroke={stroke}
+                                      strokeDasharray="4,4"
+                                      strokeWidth="1"
+                                    />
+                                    <circle
+                                      cx={rotHandle.x} cy={rotHandle.y} r="7"
+                                      fill={stroke}
+                                      stroke="#fff"
+                                      strokeWidth="1"
+                                      onMouseDown={(e) => onRectMouseDown(e, r.id, "rotate")}
+                                      style={{ cursor: "crosshair", pointerEvents: "all" }}
+                                    />
+                                  </>
+                                )}
                               </g>
                             );
                           })}
@@ -1033,6 +1157,9 @@ export default function EditVideo() {
               <button className="icon-btn" onClick={togglePlay} title={isPlaying ? "Pause" : "Play"}>
                 {isPlaying ? <Pause size={18} /> : <Play size={18} />}
               </button>
+              <button className="btn" onClick={onSaveTrim} title="Save trim for this video">
+                <Save size={14} /> <span style={{ marginLeft: 6 }}>Save</span>
+              </button>
               <span className="muted">{formatTime(trimStart)}–{formatTime(trimEnd || duration)}</span>
               <div className="flex-1" style={{ minWidth: 280 }}>
                 <div className="timeline-container" onClick={handleTimelineClick}>
@@ -1052,7 +1179,7 @@ export default function EditVideo() {
             </div>
 
             {/* Helpers / delete for rectangles only */}
-            {isDrawMode && mazeType !== "MorrisWaterMaze" && (
+            {isDrawMode && mazeType !== "MorrisWaterMaze" && !hasGlobalTemplate && (
               <div style={{ marginTop: 6 }}>
                 <div className="grid-helpers">
                   {regionSpec.map((r, i) => {
@@ -1107,15 +1234,18 @@ export default function EditVideo() {
 
           {videoPairs?.length > 1 && (
             <div className="muted" style={{ marginTop: 8 }}>
-              Configured:{" "}
-              {
-                videoPairs.filter((_, idx) => {
-                  const k = keyForIndex(idx);
-                  const tpl = mwmTemplates[k];
-                  const r = rectangles[k] || [];
-                  return mazeType === "MorrisWaterMaze" ? !!tpl : r.length === regionSpec.length;
-                }).length
-              } / {videoPairs.length}
+              {hasGlobalTemplate ? (
+                <>Trim saved: {videoPairs.filter(v => !!trimSaved[v.videoId || v._id]).length} / {videoPairs.length}</>
+              ) : (
+                <>Configured: {
+                  videoPairs.filter((_, idx) => {
+                    const k = keyForIndex(idx);
+                    const tpl = mwmTemplates[k];
+                    const r = rectangles[k] || [];
+                    return mazeType === "MorrisWaterMaze" ? !!tpl : r.length === regionSpec.length;
+                  }).length
+                } / {videoPairs.length}</>
+              )}
             </div>
           )}
         </div>

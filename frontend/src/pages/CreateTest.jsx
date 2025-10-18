@@ -21,6 +21,7 @@ export default function CreateTest({ onNext, onPrev }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState("Preparing…");
   const [uploadIndex, setUploadIndex] = useState(0);
+  const [useTemplate, setUseTemplate] = useState(false);
 
   const [formData, setFormData] = useState({
     testName: "",
@@ -282,31 +283,6 @@ export default function CreateTest({ onNext, onPrev }) {
     });
   };
 
-  // useEffect(() => {
-  //   (async () => {
-  //     if (!formData.date || !formData.group) {
-  //       setAvailableMice([]);
-  //       return;
-  //     }
-  //     try {
-  //       setLoading((s) => ({ ...s, mice: true }));
-  //       const resp = await ensureAuthedFetch(
-  //         `/api/records/mice?date=${encodeURIComponent(
-  //           formData.date
-  //         )}&group=${encodeURIComponent(formData.group)}`
-  //       );
-  //       const arr = Array.isArray(resp) ? resp : resp?.mice || []; // expect [{_id, code}]
-  //       setAvailableMice(arr);
-  //       setFormData((p) => ({ ...p, videoPairs: [] }));
-  //     } catch (e) {
-  //       console.error(e);
-  //       setAvailableMice([]);
-  //     } finally {
-  //       setLoading((s) => ({ ...s, mice: false }));
-  //     }
-  //   })();
-  // }, [formData.date, formData.group]);
-
   // ---------------- clear mwm target when not mwm ----------------
   useEffect(() => {
     if (
@@ -320,51 +296,6 @@ export default function CreateTest({ onNext, onPrev }) {
   const handleInputChange = (field, value) =>
     setFormData((prev) => ({ ...prev, [field]: value }));
 
-  // const handleVideoUpload = (e) => {
-  //   const files = Array.from(e.target.files || []).filter((f) =>
-  //     f.type.startsWith("video/")
-  //   );
-
-  //   const current = formData.videoPairs.length;
-  //   const room = Math.max(0, MAX_VIDEOS - current);
-  //   const take = files.slice(0, room);
-
-  //   if (take.length < files.length) {
-  //     alert(`You can upload up to ${MAX_VIDEOS} videos per test.`);
-  //   }
-
-  //   addFiles(take);
-  //   e.target.value = "";
-  // };
-
-  // const addFiles = (files) => {
-  //   const existed = new Set(formData.videoPairs.map((p) => p.video.name));
-  //   const toAdd = files
-  //     .filter((f) => !existed.has(f.name))
-  //     .map((f) => ({ video: f, mouseCode: "", dailyRecordId: "" }));
-  //   if (toAdd.length)
-  //     setFormData((prev) => ({
-  //       ...prev,
-  //       videoPairs: [...prev.videoPairs, ...toAdd],
-  //     }));
-  // };
-
-  // const handleMouseCodeChange = (idx, code) => {
-  //   // map code -> dailyRecordId จาก availableMice
-  //   const rec = (availableMice || []).find((m) => m.code === code);
-  //   const dailyRecordId = rec?.dailyRecordId || "";
-  //   setFormData((prev) => ({
-  //     ...prev,
-  //     videoPairs: prev.videoPairs.map((p, i) =>
-  //       i === idx ? { ...p, mouseCode: code, dailyRecordId } : p
-  //     ),
-  //   }));
-  // };
-
-  // const selectedCodes = useMemo(
-  //   () => formData.videoPairs.map((p) => p.mouseCode).filter(Boolean),
-  //   [formData.videoPairs]
-  // );
 
   const allPairs = formData.groups.flatMap(
     (gid) => formData.videoPairsByGroup[gid] || []
@@ -388,13 +319,6 @@ export default function CreateTest({ onNext, onPrev }) {
   const handleNext = async () => {
     if (!ready) return;
 
-    // ป้องกัน mouseCode ซ้ำ
-    // const uniq = new Set(formData.videoPairs.map((p) => p.mouseCode));
-    // if (uniq.size !== formData.videoPairs.length) {
-    //   alert("Each mouse code can only be used once.");
-    //   return;
-    // }
-
     try {
       setIsSubmitting(true);
       setSubmitStatus("Creating test…");
@@ -404,23 +328,6 @@ export default function CreateTest({ onNext, onPrev }) {
       if (!u) throw new Error("Please log in");
       const idToken = await u.getIdToken(true);
 
-      // --- บังคับ group เป็น ObjectId ---
-      // const isObjectId = (v) => /^[a-f0-9]{24}$/i.test(String(v || ""));
-      // let groupId = formData.group;
-      // if (!isObjectId(groupId)) {
-      //   const found = (availableGroups || []).find((t) =>
-      //     t && typeof t === "object"
-      //       ? t.name === formData.group || t._id === formData.group
-      //       : String(t) === String(formData.group)
-      //   );
-      //   groupId = found && typeof found === "object" ? found._id : null;
-      // }
-
-      // if (!isObjectId(groupId)) {
-      //   alert("Cannot resolve group to an ID. Please reselect group.");
-      //   setIsSubmitting(false);
-      //   return;
-      // }
       const allPairs = formData.groups.flatMap(
         (gid) => formData.videoPairsByGroup[gid] || []
       );
@@ -500,6 +407,18 @@ export default function CreateTest({ onNext, onPrev }) {
       };
       setSubmitStatus("Finalizing…");
       if (onNext && typeof onNext === "function") onNext(state);
+      if (useTemplate) {
+        navigate(`/template-detail/${testId}`, {
+          state: {
+            testId,
+            behaviorTest: formData.behaviorTest,
+            testName: formData.testName,
+            videoPairs: uploaded,
+            targetQuadrant: formData.targetQuadrant || "Q1",
+          }
+        });
+        return; // ไม่ไป edit-video ตอนนี้
+      }
       navigate(`/edit-video/${testId}`, { state });
     } catch (e) {
       console.error("Error creating test:", e);
@@ -887,6 +806,14 @@ export default function CreateTest({ onNext, onPrev }) {
             </div>
           );
         })}
+
+        <div className="form-row" style={{ gridTemplateColumns: "160px 1fr" }}>
+          <label>Create Template for all videos</label>
+          <label className="switch">
+            <input type="checkbox" checked={useTemplate} onChange={e => setUseTemplate(e.target.checked)} />
+            <span className="slider" />
+          </label>
+        </div>
 
         <div
           className="btn-group"

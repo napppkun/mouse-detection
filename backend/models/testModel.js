@@ -16,6 +16,7 @@ const testSchema = new mongoose.Schema(
       { type: mongoose.Schema.Types.ObjectId, ref: "DailyRecord" },
     ],
     videos: [{ type: mongoose.Schema.Types.ObjectId, ref: "Video" }],
+    template: { type: mongoose.Schema.Types.ObjectId, ref: "Template" },
 
     status: {
       type: String,

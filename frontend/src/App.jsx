@@ -32,6 +32,7 @@ import MouseDetail from "./pages/MouseDetail";
 import CreateTest from "./pages/CreateTest";
 import ManageTest from "./pages/ManageTest";
 import EditVideo from "./pages/EditVideo";
+import TemplateDetail from "./pages/TemplateDetail";
 
 // Admin
 import AdminRoutes from "./components/AdminRoutes";
@@ -91,6 +92,7 @@ export default function App() {
               path="edit-record/:mouseId/:recordId"
               element={<EditDailyRecord />}
             />
+            <Route path="template-detail/:testId" element={<TemplateDetail />} />
 
             {/* แอดมินเท่านั้น */}
             <Route

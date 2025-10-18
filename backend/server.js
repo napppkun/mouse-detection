@@ -14,6 +14,8 @@ import progressRoutes from "./routes/progressRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import fileRoutes from "./routes/fileRoutes.js";
 import uploadsRoutes from "./routes/uploadsRoutes.js";
+import templateRoutes from "./routes/templateRoutes.js";
+
 
 connectDB();
 
@@ -69,6 +71,7 @@ app.use("/api/progress", progressRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/files", fileRoutes);
 app.use("/api/uploads", uploadsRoutes);
+app.use("/api/templates", templateRoutes);
 
 app.get("/", (req, res) => {
   res.json({

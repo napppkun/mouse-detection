@@ -22,10 +22,17 @@ const ANALYSIS_API =
   process.env.ANALYSIS_API ||
   "http://localhost:8000";
 
-const storage = new Storage({
-  projectId: process.env.GOOGLE_CLOUD_PROJECT,
-  credentials: JSON.parse(process.env.GOOGLE_CLOUD_KEY),
-});
+let storage;
+try {
+  const creds = process.env.GOOGLE_CLOUD_KEY ? JSON.parse(process.env.GOOGLE_CLOUD_KEY) : undefined;
+  storage = new Storage({
+    projectId: process.env.GOOGLE_CLOUD_PROJECT,
+    ...(creds ? { credentials: creds } : {}),
+  });
+} catch (e) {
+  console.error("Invalid GOOGLE_CLOUD_KEY JSON:", e?.message);
+  storage = new Storage({ projectId: process.env.GOOGLE_CLOUD_PROJECT });
+}
 const bucketName = process.env.GOOGLE_CLOUD_BUCKET;
 
 // ───────────────── helpers ─────────────────
@@ -163,69 +170,6 @@ function normalizeMazeShort(s) {
   if (t.includes("ymaze") || t.includes("y_maze")) return "ymaze";
   if (t.includes("mwm") || t.includes("morris")) return "mwm";
   return "epm";
-}
-function pickDeep(obj, pathList) {
-  for (const p of pathList) {
-    const parts = p.split(".");
-    let cur = obj;
-    let ok = true;
-    for (const k of parts) {
-      if (!cur || typeof cur !== "object" || !(k in cur)) {
-        ok = false;
-        break;
-      }
-      cur = cur[k];
-    }
-    if (ok && cur !== undefined && cur !== null) return cur;
-  }
-  return undefined;
-}
-
-function normalizeYmazeMetrics(m) {
-  if (!m || typeof m !== "object") return null;
-  if (m.summary || m.sequence || m.arm_sequence || m.A_entries !== undefined) {
-    const total_entries = Number(m.total_entries ?? 0);
-    const noa = Number(m.no_of_alternations ?? m.no_of_alternation ?? 0);
-    const denom = Math.max(0, total_entries - 2);
-    const alt_pct = Number.isFinite(m.alternation_percent)
-      ? Number(m.alternation_percent)
-      : denom
-        ? Number(((noa / denom) * 100).toFixed(2))
-        : 0;
-
-    const seq = Array.isArray(m.sequence)
-      ? m.sequence.map((r) => ({
-        entry: Number(r.entry ?? 0),
-        arm: String(r.arm ?? ""),
-        alternation: r.alternation === "" ? "" : Number(r.alternation ?? 0),
-      }))
-      : Array.isArray(m.arm_sequence) && Array.isArray(m.alternation_results)
-        ? m.arm_sequence.map((arm, i) => ({
-          entry: i + 1,
-          arm: String(arm ?? ""),
-          alternation:
-            (m.alternation_results[i] ?? "") === null
-              ? ""
-              : Number(m.alternation_results[i] ?? 0),
-        }))
-        : [];
-
-    return {
-      summary: {
-        A_entries: Number(m.A_entries ?? 0),
-        B_entries: Number(m.B_entries ?? 0),
-        C_entries: Number(m.C_entries ?? 0),
-        total_entries,
-        no_of_alternations: noa,
-        alternation_percent: alt_pct,
-        time_A: Number(m.time_A ?? m.A_time ?? 0),
-        time_B: Number(m.time_B ?? m.B_time ?? 0),
-        time_C: Number(m.time_C ?? m.C_time ?? 0),
-      },
-      sequence: seq,
-    };
-  }
-  return null;
 }
 
 // ────────────────── controllers ─────────────────
@@ -460,6 +404,11 @@ export const analyzeTest = async (req, res) => {
 
 export const analyzerWebhook = async (req, res) => {
   try {
+    const secret = req.headers["x-progress-secret"] || req.body?.secret;
+    if (secret !== process.env.PROGRESS_SECRET) {
+      return res.status(403).json({ ok: false, message: "Forbidden" });
+    }
+
     const { testId, results } = req.body || {};
     if (!testId || !Array.isArray(results)) {
       return res.status(400).json({ ok: false, message: "Invalid payload" });

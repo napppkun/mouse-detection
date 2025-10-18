@@ -15,10 +15,17 @@ import axios from "axios";
 import { Storage } from "@google-cloud/storage";
 import { v4 as uuidv4 } from "uuid";
 
-const storage = new Storage({
-  projectId: process.env.GOOGLE_CLOUD_PROJECT,
-  credentials: JSON.parse(process.env.GOOGLE_CLOUD_KEY),
-});
+let storage;
+try {
+  const creds = process.env.GOOGLE_CLOUD_KEY ? JSON.parse(process.env.GOOGLE_CLOUD_KEY) : undefined;
+  storage = new Storage({
+    projectId: process.env.GOOGLE_CLOUD_PROJECT,
+    ...(creds ? { credentials: creds } : {}),
+  });
+} catch (e) {
+  console.error("Invalid GOOGLE_CLOUD_KEY JSON:", e?.message);
+  storage = new Storage({ projectId: process.env.GOOGLE_CLOUD_PROJECT });
+}
 const bucketName = process.env.GOOGLE_CLOUD_BUCKET;
 
 const ANALYSIS_API = process.env.ANALYSIS_API || "http://localhost:8000";
@@ -309,11 +316,13 @@ export const updateVideo = async (req, res) => {
     for (const k of allowed)
       if (updates[k] !== undefined) patch[k] = updates[k];
 
+    const prev = await Video.findOne({ _id: req.params.id, ownerUid }).select("test");
     const video = await Video.findOneAndUpdate(
       { _id: req.params.id, ownerUid },
       patch,
       { new: true, runValidators: true }
     );
+
     if (!video)
       return res
         .status(404)
@@ -324,6 +333,12 @@ export const updateVideo = async (req, res) => {
       await Test.findOneAndUpdate(
         { _id: patch.test, ownerUid },
         { $addToSet: { videos: video._id } }
+      );
+    }
+    if (prev?.test && String(prev.test) !== String(patch.test)) {
+      await Test.findOneAndUpdate(
+        { _id: prev.test, ownerUid },
+        { $pull: { videos: video._id } }
       );
     }
 
@@ -370,6 +385,23 @@ export const deleteVideo = async (req, res) => {
     console.error("deleteVideo error:", error);
     res.status(500).json({ success: false, message: error.message });
   }
+};
+
+export const saveTrim = async (req, res) => {
+  const ownerUid = req.user.ownerUid || req.user.uid;
+  const { id } = req.params;
+  const s = Number(req.body?.startSec);
+  const e = Number(req.body?.endSec);
+  if (!Number.isFinite(s) || !Number.isFinite(e) || e <= s) {
+    return res.status(400).json({ success: false, message: "Invalid trim window" });
+  }
+  const v = await Video.findOneAndUpdate(
+    { _id: id, ownerUid },
+    { $set: { trimStartSec: s, trimEndSec: e } },
+    { new: true, projection: "trimStartSec trimEndSec" }
+  );
+  if (!v) return res.status(404).json({ success: false, message: "Video not found" });
+  return res.json({ success: true, data: v });
 };
 
 // analysis results of a video
