@@ -1,5 +1,5 @@
 // src/pages/ManageTest.jsx
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { auth } from "../firebase";
 import { onAuthStateChanged } from "firebase/auth";
@@ -17,6 +17,11 @@ export default function ManageTest() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
+
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
   // inline edit states
   const [editingId, setEditingId] = useState(null);
@@ -39,10 +44,19 @@ export default function ManageTest() {
       .replace(/^_+|_+$/g, "")
       .slice(0, 120) || "file";
 
-  const fetchTests = async (idToken) => {
+  const fetchTests = async (idToken, opts = {}) => {
     setError("");
+    const _page = opts.page ?? page;
+    const _limit = opts.limit ?? limit;
+    const _q = opts.q ?? search;
+
     try {
-      const res = await fetch(`${API_BASE}`, {
+      const qs = new URLSearchParams({
+        page: String(_page),
+        limit: String(_limit),
+        q: _q || "",
+      });
+      const res = await fetch(`${API_BASE}?${qs.toString()}`, {
         headers: { Authorization: `Bearer ${idToken}` },
       });
 
@@ -58,11 +72,16 @@ export default function ManageTest() {
         return;
       }
 
-      const data = await res.json();
-      const rows = Array.isArray(data) ? data : data.data || [];
+      const js = await res.json();
+      const rows = Array.isArray(js) ? js : js.data || [];
       setTests(rows);
+      const pg = js.pagination || {};
+      setPage(pg.currentPage || _page);
+      setLimit(_limit);
+      setTotal(pg.totalTests ?? rows.length);
+      setTotalPages(pg.totalPages || 1);
     } catch (err) {
-      console.error("Error fetching data:", err);
+      console.error("Error fetching tests:", err);
       setError("Error fetching data");
       setTests([]);
     } finally {
@@ -81,35 +100,10 @@ export default function ManageTest() {
       userRef.current = u;
       const idToken = await u.getIdToken(false);
       setLoading(true);
-      fetchTests(idToken);
+      fetchTests(idToken, { page: 1 });
     });
     return unsub;
   }, [navigate, location]);
-
-  // polling while there are non-terminal tests
-  useEffect(() => {
-    if (pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
-    if (!tests.length) return;
-
-    if (isPendingAny(tests)) {
-      pollRef.current = setInterval(async () => {
-        const u = userRef.current;
-        if (!u) return;
-        const idToken = await u.getIdToken(false);
-        fetchTests(idToken);
-      }, 4000);
-    }
-
-    return () => {
-      if (pollRef.current) {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-      }
-    };
-  }, [tests]);
 
   const handleDelete = async (id) => {
     const ok = window.confirm(
@@ -133,23 +127,48 @@ export default function ManageTest() {
       const result = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(result.message || "Delete failed");
       removeJobsByTestId(id);
-      setTests((prev) => prev.filter((m) => m._id !== id));
+      const u2 = userRef.current; if (u2) {
+        const token2 = await u2.getIdToken(false);
+        setLoading(true);
+        // รีเฟรชหน้าปัจจุบันก่อน
+        await fetchTests(token2, { page });
+        // ถ้าหน้าปัจจุบันว่างและมีหน้าก่อนหน้า ให้ถอยไปหน้าเดิม-1
+        if (tests.length === 1 && page > 1) {
+          setLoading(true);
+          await fetchTests(token2, { page: page - 1 });
+        }
+      }
     } catch (err) {
       console.error("Error deleting test:", err);
       alert(err.message || "Error deleting test");
     }
   };
 
-  const filtered = useMemo(() => {
-    const term = (search || "").toLowerCase();
-    if (!term) return tests;
-    return tests.filter(
-      (t) =>
-        (t.name || "").toLowerCase().includes(term) ||
-        (t.behaviorTest || "").toLowerCase().includes(term) ||
-        (t.status || "").toLowerCase().includes(term)
-    );
-  }, [tests, search]);
+  // ทำ debounce เมื่อค้นหา แล้วรีเซ็ตไปหน้า 1
+  useEffect(() => {
+    const t = setTimeout(async () => {
+      const u = userRef.current; if (!u) return;
+      const idToken = await u.getIdToken(false);
+      setLoading(true);
+      fetchTests(idToken, { page: 1, q: search });
+    }, 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // Polling ให้รีเฟรชหน้าเดียวปัจจุบัน
+  useEffect(() => {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    if (!tests.length) return;
+
+    if (isPendingAny(tests)) {
+      pollRef.current = setInterval(async () => {
+        const u = userRef.current; if (!u) return;
+        const idToken = await u.getIdToken(false);
+        fetchTests(idToken); // ใช้ page/limit/q ปัจจุบัน
+      }, 4000);
+    }
+    return () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } };
+  }, [tests, page, limit, search]);
 
   // ---------- Download Excel (report) ----------
   const downloadExcelForTest = async (test) => {
@@ -259,6 +278,28 @@ export default function ManageTest() {
     }
   };
 
+  const pageCount = Math.max(1, totalPages);
+
+  const gotoPage = async (p) => {
+    const clamped = Math.min(pageCount, Math.max(1, p));
+    if (clamped === page) return;
+    const u = userRef.current; if (!u) return;
+    const idToken = await u.getIdToken(false);
+    setLoading(true);
+    fetchTests(idToken, { page: clamped });
+  };
+
+  const buildPages = () => {
+    const pages = [];
+    const add = (x) => pages.push(x);
+    const show = new Set([1, page, page - 1, page + 1, pageCount]);
+    for (let i = 1; i <= pageCount; i++) {
+      if (show.has(i)) add(i);
+      else if (pages[pages.length - 1] !== "...") add("...");
+    }
+    return pages;
+  };
+
   return (
     <div className="app-main">
       <div className="main-wrap">
@@ -301,7 +342,7 @@ export default function ManageTest() {
               <p>Loading Tests...</p>
             ) : error ? (
               <p style={{ color: "var(--danger)" }}>{error}</p>
-            ) : filtered.length === 0 ? (
+            ) : tests.length === 0 ? (
               <p>Data Not Found</p>
             ) : (
               <table className="table">
@@ -314,7 +355,7 @@ export default function ManageTest() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((t) => {
+                  {tests.map((t) => {
                     const isCompleted =
                       (t.status || "").toLowerCase() === "completed";
                     const isEditing = editingId === t._id;
@@ -345,10 +386,10 @@ export default function ManageTest() {
                           {!terminalStatuses.has(
                             (t.status || "").toLowerCase()
                           ) && (
-                            <span className="muted" style={{ marginLeft: 8 }}>
-                              (updating…)
-                            </span>
-                          )}
+                              <span className="muted" style={{ marginLeft: 8 }}>
+                                (updating…)
+                              </span>
+                            )}
                         </td>
                         <td>
                           <div
@@ -431,6 +472,45 @@ export default function ManageTest() {
                   })}
                 </tbody>
               </table>
+            )}
+            {pageCount > 1 && (
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 12, justifyContent: "space-between" }}>
+                <div className="muted">Showing {(page - 1) * limit + 1}–{Math.min(page * limit, total)} of {total}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <button className="btn" disabled={page <= 1} onClick={() => gotoPage(page - 1)}>Prev</button>
+                  {buildPages().map((p, i) =>
+                    p === "..." ? (
+                      <span key={i} className="muted" style={{ padding: "0 6px" }}>…</span>
+                    ) : (
+                      <button
+                        key={i}
+                        className="btn"
+                        style={{ background: p === page ? "var(--brand)" : "#fff", color: p === page ? "#fff" : "inherit" }}
+                        onClick={() => gotoPage(p)}
+                      >{p}</button>
+                    )
+                  )}
+                  <button className="btn" disabled={page >= pageCount} onClick={() => gotoPage(page + 1)}>Next</button>
+
+                  <select
+                    className="input"
+                    value={limit}
+                    onChange={async (e) => {
+                      const newLimit = Number(e.target.value) || 10;
+                      setLimit(newLimit);
+                      const u = userRef.current; if (!u) return;
+                      const idToken = await u.getIdToken(false);
+                      setLoading(true);
+                      fetchTests(idToken, { page: 1, limit: newLimit });
+                    }}
+                    style={{ width: 90, height: 36, marginLeft: 8 }}
+                  >
+                    <option value={10}>10</option>
+                    <option value={25}>25</option>
+                    <option value={50}>50</option>
+                  </select>
+                </div>
+              </div>
             )}
           </div>
         </div>
