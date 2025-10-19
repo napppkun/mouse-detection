@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { auth } from "../firebase";
 import { ChevronLeft, Save, Upload, Trash2, Circle as CircleIcon } from "lucide-react";
+import { getVideoContentBox } from "../lib/videoOverlay";
 import "../styles/app.css";
 
 const API_BASE = window._env_?.BACKEND_URL || process.env.BACKEND_URL || "http://127.0.0.1:5000";
@@ -21,31 +22,6 @@ const MAZE_REGIONS = {
     ],
     MorrisWaterMaze: [], // ใช้ ellipse
 };
-
-function getVideoContentBox(videoEl) {
-    const vw = videoEl.videoWidth || 0;
-    const vh = videoEl.videoHeight || 0;
-    const r = videoEl.getBoundingClientRect();
-    if (!vw || !vh || !r.width || !r.height) {
-        return { left: r.left, top: r.top, width: r.width, height: r.height, scaleX: 1, scaleY: 1 };
-    }
-    const videoAR = vw / vh;
-    const elemAR = r.width / r.height;
-    let contentW, contentH, offsetX, offsetY;
-    if (elemAR > videoAR) {
-        contentH = r.height; contentW = contentH * videoAR; offsetX = (r.width - contentW) / 2; offsetY = 0;
-    } else {
-        contentW = r.width; contentH = contentW / videoAR; offsetX = 0; offsetY = (r.height - contentH) / 2;
-    }
-    return {
-        left: r.left + offsetX,
-        top: r.top + offsetY,
-        width: contentW,
-        height: contentH,
-        scaleX: contentW / vw,
-        scaleY: contentH / vh,
-    };
-}
 
 // วาด sector MWM (local space, origin = center)
 const sectorPathLocal = (rx, ry, a1Deg, a2Deg) => {
@@ -78,7 +54,7 @@ export default function TemplateDetail() {
     const isMWM = behaviorTest === "MorrisWaterMaze";
     const regionSpec = MAZE_REGIONS[behaviorTest] || [];
 
-    // sample video (optional)
+    // sample video
     const [sampleFile, setSampleFile] = useState(null);
     const [videoUrl, setVideoUrl] = useState("");
 
@@ -94,6 +70,12 @@ export default function TemplateDetail() {
     const drawStartRef = useRef({ x: 0, y: 0 });
     const [currentDrawRect, setCurrentDrawRect] = useState(null);
     const drawRectRef = useRef(null);
+    const [rectDrag, setRectDrag] = useState(null);
+    const [isDragging, setIsDragging] = useState(false);
+    const [isResizing, setIsResizing] = useState(false);
+    const [resizeCorner, setResizeCorner] = useState(null); // 'nw'|'ne'|'se'|'sw'
+    const [isRotating, setIsRotating] = useState(false);
+    const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
     // ellipse (MWM)
     const [ellipse, setEllipse] = useState(null); // {cx,cy,rx,ry,rotationDeg}
@@ -224,6 +206,20 @@ export default function TemplateDetail() {
         setError("");
     };
 
+    const onRectMouseDown = (e, id, action = "move", corner = null) => {
+        e.stopPropagation(); e.preventDefault();
+        setSelectedRect(id);
+        const v = videoRef.current; if (!v) return;
+        const box = getVideoContentBox(v);
+        const startVX = (e.clientX - box.left) / box.scaleX;
+        const startVY = (e.clientY - box.top) / box.scaleY;
+        setDragStart({ x: startVX, y: startVY });
+
+        if (action === "move") setIsDragging(true);
+        else if (action === "resize") { setResizeCorner(corner || "se"); setIsResizing(true); }
+        else if (action === "rotate") setIsRotating(true);
+    };
+
     useEffect(() => {
         const mv = (e) => {
             const v = videoRef.current; if (!v) return;
@@ -271,6 +267,53 @@ export default function TemplateDetail() {
                 setCurrentDrawRect(rectNow);
                 drawRectRef.current = rectNow;
             }
+
+            // --- move/resize/rotate rectangles ---
+            if (!isMWM && (isDragging || isResizing || isRotating) && selectedRect) {
+                const v = videoRef.current; if (!v) return;
+                const box = getVideoContentBox(v);
+                const clickVX = (e.clientX - box.left) / box.scaleX;
+                const clickVY = (e.clientY - box.top) / box.scaleY;
+
+                const sel = rectangles.find((r) => r.id === selectedRect);
+                if (!sel) return;
+
+                if (isDragging || isResizing) {
+                    const dx = clickVX - dragStart.x;
+                    const dy = clickVY - dragStart.y;
+
+                    if (isDragging) {
+                        const nx = Math.max(0, Math.min(v.videoWidth - sel.width, sel.x + dx));
+                        const ny = Math.max(0, Math.min(v.videoHeight - sel.height, sel.y + dy));
+                        setRectangles(prev => prev.map(r => r.id === sel.id ? { ...r, x: nx, y: ny } : r));
+                    } else {
+                        let nx = sel.x, ny = sel.y, nw = sel.width, nh = sel.height;
+                        const minW = 20, minH = 20;
+                        if (resizeCorner === "se") { nw = Math.max(minW, sel.width + dx); nh = Math.max(minH, sel.height + dy); }
+                        else if (resizeCorner === "ne") { nw = Math.max(minW, sel.width + dx); nh = Math.max(minH, sel.height - dy); ny = sel.y + sel.height - nh; }
+                        else if (resizeCorner === "sw") { nw = Math.max(minW, sel.width - dx); nh = Math.max(minH, sel.height + dy); nx = sel.x + sel.width - nw; }
+                        else if (resizeCorner === "nw") { nw = Math.max(minW, sel.width - dx); nh = Math.max(minH, sel.height - dy); nx = sel.x + sel.width - nw; ny = sel.y + sel.height - nh; }
+                        // clamp
+                        if (nx < 0) { nw += nx; nx = 0; }
+                        if (ny < 0) { nh += ny; ny = 0; }
+                        if (nx + nw > v.videoWidth) nw = v.videoWidth - nx;
+                        if (ny + nh > v.videoHeight) nh = v.videoHeight - ny;
+
+                        setRectangles(prev => prev.map(r => r.id === sel.id ? { ...r, x: nx, y: ny, width: nw, height: nh } : r));
+                    }
+                    setDragStart({ x: clickVX, y: clickVY });
+                    return;
+                }
+
+                if (isRotating) {
+                    const cx = sel.x + sel.width / 2;
+                    const cy = sel.y + sel.height / 2;
+                    let angle = Math.atan2(clickVY - cy, clickVX - cx) * (180 / Math.PI);
+                    if (e.shiftKey) angle = Math.round(angle / 15) * 15; // snap 15°
+                    setRectangles(prev => prev.map(r => r.id === sel.id ? { ...r, rotation: angle } : r));
+                    return;
+                }
+            }
         };
 
         const up = () => {
@@ -293,6 +336,10 @@ export default function TemplateDetail() {
             setCurrentDrawRect(null);
             drawRectRef.current = null;
             setTplDragMode(null);
+            setIsDragging(false);
+            setIsResizing(false);
+            setResizeCorner(null);
+            setIsRotating(false);
         };
 
         document.addEventListener("mousemove", mv);
@@ -301,8 +348,14 @@ export default function TemplateDetail() {
             document.removeEventListener("mousemove", mv);
             document.removeEventListener("mouseup", up);
         };
-    }, [isMWM, ellipse, tplDragMode, isDrawing, currentDrawRect, rectangles, activeRegionType, regionSpec]);
-
+    }, [
+        isMWM, ellipse, tplDragMode,
+        isDrawing, currentDrawRect,
+        rectangles, activeRegionType, regionSpec,
+        isDragging, isResizing, isRotating,
+        selectedRect, dragStart
+    ]);
+    
     const deleteSelectedRect = () => {
         setRectangles(prev => prev.filter(r => r.id !== selectedRect));
         setSelectedRect(null);
@@ -526,31 +579,128 @@ export default function TemplateDetail() {
                                                 ].map(c => rotPt(c.x, c.y));
                                                 const d = `M ${corners[0].x} ${corners[0].y} L ${corners[1].x} ${corners[1].y} L ${corners[2].x} ${corners[2].y} L ${corners[3].x} ${corners[3].y} Z`;
                                                 return (
-                                                    <g key={r.id} style={{ pointerEvents: "none" }}>
-                                                        <text x={cx} y={cy - 10} textAnchor="middle" fontSize="12"
-                                                            fill="#fff" stroke="#0f172a" strokeWidth="1" paintOrder="stroke">
-                                                            {r.name || r.type}
-                                                        </text>
-                                                        <path
-                                                            d={d}
-                                                            fill={r.color}
-                                                            fillOpacity={0.12}
-                                                            stroke={r.color}
-                                                            strokeWidth={2}
-                                                            vectorEffect="non-scaling-stroke"
-                                                        />
+                                                    <g key={r.id} style={{ pointerEvents: "all" }}>
+                                                        {/* ค่าที่ใช้ร่วมกัน */}
                                                         {(() => {
-                                                            const isSelected = selectedRect === r.id;
-                                                            return isSelected ? (
-                                                                <path
-                                                                    d={d}
-                                                                    fill="none"
-                                                                    stroke="#ffffffcc"
-                                                                    strokeWidth="1"
-                                                                    strokeDasharray="5,4"
-                                                                    vectorEffect="non-scaling-stroke"
-                                                                />
-                                                            ) : null;
+                                                            const p = toScreen(r.x, r.y);
+                                                            const w = r.width * sx, h = r.height * sy;
+                                                            const cx = p.x + w / 2, cy = p.y + h / 2;
+                                                            const rotDeg = r.rotation || 0;
+                                                            const rotRad = (rotDeg * Math.PI) / 180;
+
+                                                            const rotPt = (x, y) => {
+                                                                const dx = x - cx, dy = y - cy;
+                                                                return {
+                                                                    x: cx + dx * Math.cos(rotRad) - dy * Math.sin(rotRad),
+                                                                    y: cy + dx * Math.sin(rotRad) + dy * Math.cos(rotRad),
+                                                                };
+                                                            };
+
+                                                            // มุมทั้ง 4 หลังหมุน
+                                                            const corners = [
+                                                                { x: p.x, y: p.y },
+                                                                { x: p.x + w, y: p.y },
+                                                                { x: p.x + w, y: p.y + h },
+                                                                { x: p.x, y: p.y + h },
+                                                            ].map(c => rotPt(c.x, c.y));
+
+                                                            const d = `M ${corners[0].x} ${corners[0].y}
+               L ${corners[1].x} ${corners[1].y}
+               L ${corners[2].x} ${corners[2].y}
+               L ${corners[3].x} ${corners[3].y} Z`;
+
+                                                            // จุดบนกลางกรอบ + จุดหมุน
+                                                            const topMid = rotPt((p.x + p.x + w) / 2, p.y);
+                                                            const rotHandle = { x: topMid.x, y: topMid.y - 24 };
+
+                                                            const isSel = selectedRect === r.id;
+                                                            const stroke = r.color || "#0ea5e9";
+                                                            const hs = 6;
+
+                                                            const cursorForCorner = (name) =>
+                                                                name === "ne" || name === "sw" ? "nesw-resize" : "nwse-resize";
+
+                                                            return (
+                                                                <>
+                                                                    {/* label */}
+                                                                    <text
+                                                                        x={cx} y={cy - 10}
+                                                                        textAnchor="middle" fontSize="12"
+                                                                        fill="#fff" stroke="#0f172a" strokeWidth="1" paintOrder="stroke"
+                                                                        style={{ pointerEvents: "none" }}
+                                                                    >
+                                                                        {r.name || r.type}
+                                                                    </text>
+
+                                                                    {/* ตัวกรอบ */}
+                                                                    <path
+                                                                        d={d}
+                                                                        fill={stroke}
+                                                                        fillOpacity={isSel ? 0.12 : 0.08}
+                                                                        stroke={stroke}
+                                                                        strokeWidth={isSel ? 2.5 : 1.8}
+                                                                        vectorEffect="non-scaling-stroke"
+                                                                        onMouseDown={(e) => onRectMouseDown(e, r.id, "move")}
+                                                                        style={{ cursor: "move", pointerEvents: "all" }}
+                                                                    />
+
+                                                                    {/* เส้นประเมื่อถูกเลือก (ครั้งเดียวพอ) */}
+                                                                    {isSel && (
+                                                                        <path
+                                                                            d={d}
+                                                                            fill="none"
+                                                                            stroke="#ffffffcc"
+                                                                            strokeWidth="1"
+                                                                            strokeDasharray="5,4"
+                                                                            vectorEffect="non-scaling-stroke"
+                                                                            pointerEvents="none"
+                                                                        />
+                                                                    )}
+
+                                                                    {/* แสดง handles เฉพาะตอนเลือก */}
+                                                                    {isSel && (
+                                                                        <>
+                                                                            {/* handles 4 มุม */}
+                                                                            {[
+                                                                                { name: "nw", x: p.x, y: p.y },
+                                                                                { name: "ne", x: p.x + w, y: p.y },
+                                                                                { name: "se", x: p.x + w, y: p.y + h },
+                                                                                { name: "sw", x: p.x, y: p.y + h },
+                                                                            ].map((c) => {
+                                                                                const rr = rotPt(c.x, c.y);
+                                                                                return (
+                                                                                    <rect
+                                                                                        key={c.name}
+                                                                                        x={rr.x - hs}
+                                                                                        y={rr.y - hs}
+                                                                                        width={hs * 2}
+                                                                                        height={hs * 2}
+                                                                                        fill={stroke}
+                                                                                        stroke="#fff"
+                                                                                        strokeWidth="1"
+                                                                                        onMouseDown={(e) => onRectMouseDown(e, r.id, "resize", c.name)}
+                                                                                        style={{ cursor: cursorForCorner(c.name), pointerEvents: "all" }}
+                                                                                    />
+                                                                                );
+                                                                            })}
+
+                                                                            {/* rotate handle */}
+                                                                            <line
+                                                                                x1={topMid.x} y1={topMid.y}
+                                                                                x2={rotHandle.x} y2={rotHandle.y}
+                                                                                stroke={stroke} strokeDasharray="4,4" strokeWidth="1"
+                                                                                pointerEvents="none"
+                                                                            />
+                                                                            <circle
+                                                                                cx={rotHandle.x} cy={rotHandle.y} r="7"
+                                                                                fill={stroke} stroke="#fff" strokeWidth="1"
+                                                                                onMouseDown={(e) => onRectMouseDown(e, r.id, "rotate")}
+                                                                                style={{ cursor: "crosshair", pointerEvents: "all" }}
+                                                                            />
+                                                                        </>
+                                                                    )}
+                                                                </>
+                                                            );
                                                         })()}
                                                     </g>
                                                 );

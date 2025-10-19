@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { auth } from "../firebase";
 import { useProgress } from "../context/ProgressCenter";
+import { getVideoContentBox } from "../lib/videoOverlay";
 import "../styles/app.css";
 
 const BACKEND_URL = window._env_?.BACKEND_URL || process.env.BACKEND_URL || "http://127.0.0.1:5000";
@@ -14,32 +15,6 @@ const MAZE_TO_SERVICE = {
   Ymaze: "ymaze",
   MorrisWaterMaze: "mwm",
 };
-
-// viewport→video content box (object-fit: contain)
-function getVideoContentBox(videoEl) {
-  const vw = videoEl.videoWidth || 0;
-  const vh = videoEl.videoHeight || 0;
-  const r = videoEl.getBoundingClientRect();
-  if (!vw || !vh || !r.width || !r.height) {
-    return { left: r.left, top: r.top, width: r.width, height: r.height, scaleX: 1, scaleY: 1 };
-  }
-  const videoAR = vw / vh;
-  const elemAR = r.width / r.height;
-  let contentW, contentH, offsetX, offsetY;
-  if (elemAR > videoAR) {
-    contentH = r.height; contentW = contentH * videoAR; offsetX = (r.width - contentW) / 2; offsetY = 0;
-  } else {
-    contentW = r.width; contentH = contentW / videoAR; offsetX = 0; offsetY = (r.height - contentH) / 2;
-  }
-  return {
-    left: r.left + offsetX,
-    top: r.top + offsetY,
-    width: contentW,
-    height: contentH,
-    scaleX: contentW / vw,
-    scaleY: contentH / vh,
-  };
-}
 
 export default function EditVideo() {
   const { testId } = useParams();
