@@ -1008,7 +1008,7 @@ body {
   transition: width .3s ease;
 }
 
-/* สีจบงาน/ล้มเหลว (ถ้าอยากไฮไลท์) */
+/* สีจบงาน/ล้มเหลว */
 .progress-card.is-done .fill {
   background: #22c55e;
 }
@@ -1026,6 +1026,158 @@ body {
 .helper-chip.is-selected {
   background: #f8fafc;
   border-color: var(--border);
+}
+
+/* --- Progress tray: right-bottom --- */
+.progress-tray.right-bottom {
+  position: fixed;
+  right: 10px;
+  bottom: 10px;
+  max-width: 460px;
+  width: min(92vw, 460px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 4000;
+  pointer-events: none;
+  /* ให้คลิกทะลุ เว้นเฉพาะส่วนที่เราตั้ง auto */
+}
+
+/* กลุ่ม (หนึ่ง test) */
+.progress-card-group {
+  background: #fff;
+  border: 1px solid var(--border, #d9dee6);
+  border-radius: 12px;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.12);
+  overflow: hidden;
+  pointer-events: auto;
+  /* ให้คลิกได้ */
+}
+
+/* Header ของกลุ่ม */
+.progress-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #eceff4;
+}
+
+.progress-group-header .hdr-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.progress-group-header .hdr-title {
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.progress-group-header .hdr-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.progress-group-header .hdr-count {
+  min-width: 40px;
+  text-align: right;
+  font-size: 12.5px;
+  color: #64748b;
+}
+
+.progress-group-header .ok-icon {
+  color: #16a34a;
+}
+
+/* เนื้อในของกลุ่ม */
+.progress-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+}
+
+/* แถว progress */
+.progress-row {
+  display: grid;
+  grid-template-columns: 140px 1fr auto;
+  /* label | bar | dismiss */
+  gap: 10px;
+  align-items: center;
+}
+
+.progress-row .label {
+  font-weight: 600;
+  color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* bar */
+.progress-row .bar {
+  position: relative;
+  height: 10px;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.progress-row .bar.is-failed {
+  background: #fff1f2;
+  border-color: #fecdd3;
+}
+
+.progress-row .bar .fill {
+  position: absolute;
+  inset: 0 100% 0 0;
+  height: 100%;
+  background: #2563eb;
+  border-right: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+/* สีสถานะระดับแถว */
+.progress-row.is-done .bar .fill {
+  background: #16a34a;
+}
+
+.progress-row.is-failed .bar {
+  background: #fff1f2;
+  border-color: #fecdd3;
+}
+
+.progress-row.is-failed .bar .fill {
+  background: #ef4444;
+}
+
+/* ปุ่มไอคอน */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 26px;
+  width: 26px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  color: #0f172a;
+  cursor: pointer;
+}
+
+.icon-btn:hover {
+  background: #f8fafc;
+}
+
+/* (ถ้าอยากให้ทั้งถาดแคบลงในจอเล็ก) */
+@media (max-width: 420px) {
+  .progress-row {
+    grid-template-columns: 110px 1fr auto;
+  }
 }
 
 /* ----- Chips (Groups) - stable size, no wobble ----- */

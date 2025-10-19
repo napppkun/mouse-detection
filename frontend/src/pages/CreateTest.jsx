@@ -808,11 +808,11 @@ export default function CreateTest({ onNext, onPrev }) {
         })}
 
         <div className="form-row" style={{ gridTemplateColumns: "160px 1fr" }}>
-          <label>Create Template for all videos</label>
           <label className="switch">
             <input type="checkbox" checked={useTemplate} onChange={e => setUseTemplate(e.target.checked)} />
             <span className="slider" />
           </label>
+          <label>Create Template for all videos</label>
         </div>
 
         <div
