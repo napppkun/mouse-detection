@@ -209,6 +209,47 @@ export default function ManageTest() {
     }
   };
 
+  const rerunTest = async (test) => {
+    try {
+      const ok = window.confirm(
+        "Re-run analysis for this test?\n- Pending/failed videos will be queued again.\n- Processed ones will be skipped by analyzer."
+      );
+      if (!ok) return;
+
+      const u = auth.currentUser;
+      if (!u) throw new Error("Please log in");
+      const token = await u.getIdToken(false);
+
+      // ยิงไปที่ analyze โดยไม่บังคับ strict (ให้ข้ามตัวที่ไม่มี box/templateได้)
+      const resp = await fetch(`${API_BASE}/${test._id}/analyze`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          // ให้ backend เลือก videos ของ test เอง (โค้ดคุณทำอยู่แล้ว)
+          // ใส่ strict: "0" เพื่อไม่บล็อกเคสบางไฟล์ไม่มีกล่อง/เทมเพลต
+          strict: "0",
+          // ใส่ค่า targetQuadrant ถ้าเป็น MWM (ใช้ตัวเดิมใน test หาก Frontend รู้)
+          // targetQuadrant: "Q1", // (optional) ถ้ามีใน state ก็ส่งได้
+        }),
+      });
+      const js = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(js?.message || "Failed to enqueue");
+
+      alert(`Re-queued ${js?.data?.queued ?? 0} videos. The list will update shortly.`);
+      // รีเฟรชหน้า
+      const idToken = await u.getIdToken(false);
+      setLoading(true);
+      fetchTests(idToken, { page });
+    } catch (e) {
+      console.error(e);
+      alert(e.message || "Failed to re-run test");
+    }
+  };
+
+
   // ---------- Inline edit test name ----------
   const startEdit = (row) => {
     // ถ้ากำลังประมวลผล ไม่ให้แก้ (ฝั่ง backend ก็กันอยู่)
@@ -422,6 +463,17 @@ export default function ManageTest() {
                               onClick={() => downloadExcelForTest(t)}
                             >
                               Download Excel
+                            </button>
+
+                            {/* Rerun Processing Test */}
+                            <button
+                              type="button"
+                              className="btn"
+                              style={{ height: 36, padding: "0 14px" }}
+                              title="Re-run analysis for this test"
+                              onClick={() => rerunTest(t)}
+                            >
+                              Re-run Test
                             </button>
 
                             {/* Edit / Save test name */}

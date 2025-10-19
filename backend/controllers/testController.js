@@ -211,6 +211,12 @@ export const analyzeTest = async (req, res) => {
       (await Promise.all(
         (test.videos || []).filter(Boolean).map(ensureVideoDoc)
       )) || [];
+
+    // ข้ามวิดีโอที่ processed แล้ว
+    const vidsToRun = vids.filter(v => (v.status || "").toLowerCase() !== "processed");
+    if (!vidsToRun.length) {
+      return res.json({ success: true, data: { queued: 0, message: "All videos already processed" } });
+    }
     if (!vids.length)
       return res
         .status(400)
@@ -263,7 +269,7 @@ export const analyzeTest = async (req, res) => {
         }))
         : [];
 
-      // NEW: ellipse template
+      // ellipse template
       let ellipseTemplate = undefined;
       if (mazeShort === "mwm") {
         const t = mwmTemplateByMouse?.[v.mouseCode];
@@ -338,8 +344,8 @@ export const analyzeTest = async (req, res) => {
       { _id: id, ownerUid },
       {
         $set: {
-          status: "processing",
-          processingStartedAt: new Date(),
+          status: vidsToRun.length ? "processing" : test.status,
+          processingStartedAt: vidsToRun.length ? new Date() : test.processingStartedAt,
           boundingBoxes: rectanglesByMouse || {},
           settings: {
             ...(test.settings || {}),

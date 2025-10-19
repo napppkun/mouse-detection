@@ -11,17 +11,16 @@ BASE_ENV = {
     "BACKEND_URL": "https://backend-360969085581.asia-southeast1.run.app",
 }
 
-# เราอยู่ใน analysis_service แล้ว จึงชี้ Dockerfile ตรง ๆ ได้เลย
 image = modal.Image.from_dockerfile("Dockerfile").env(BASE_ENV)
 
-GPU = modal.gpu.T4()   # หรือ modal.gpu.A10G()
+GPU_TYPE = "T4"  
 
 @app.function(
     image=image,
-    gpu=GPU,
+    gpu=GPU_TYPE,
     memory="16Gi",
     timeout=7200,
-    container_idle_timeout=300,
+    scaledown_window=300,
     min_containers=1,      # เดิม keep_warm
     max_containers=10,      # เดิม concurrency_limit
     secrets=[modal.Secret.from_name("mouse-secrets")],
