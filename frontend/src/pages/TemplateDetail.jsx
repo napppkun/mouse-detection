@@ -144,6 +144,32 @@ export default function TemplateDetail() {
         setSampleFile(fs[0]);
     };
 
+    // บังคับให้ component re-render เมื่อวิดีโอพร้อม/มีการย่อ–ขยาย
+    const [, forceTick] = useState(0);
+
+    useEffect(() => {
+        const handler = () => forceTick(t => t + 1);
+        const v = videoRef.current;
+
+        // เมื่อวิดีโอโหลด dimension เสร็จ
+        if (v) {
+            v.addEventListener("loadedmetadata", handler);
+            v.addEventListener("loadeddata", handler);
+        }
+
+        // เวลาเปลี่ยนขนาดหน้าจอ หรือ container เปลี่ยนขนาด
+        window.addEventListener("resize", handler);
+
+        return () => {
+            if (v) {
+                v.removeEventListener("loadedmetadata", handler);
+                v.removeEventListener("loadeddata", handler);
+            }
+            window.removeEventListener("resize", handler);
+        };
+    }, []);
+
+
     // ───────────────────────── Rectangles draw (EPM/Y) ─────────────────────────
     const onOverlayMouseDown = (e) => {
         const v = videoRef.current; if (!v || !v.videoWidth) return;
@@ -387,36 +413,50 @@ export default function TemplateDetail() {
                         ref={overlayRef}
                         data-el="overlay"
                         onMouseDown={onOverlayMouseDown}
-                        style={{ position: "absolute", inset: 0, zIndex: 10, cursor: isMWM ? "default" : (activeRegionType ? "crosshair" : "default") }}
+                        style={{
+                            position: "absolute",
+                            inset: 0,
+                            zIndex: 20,                // ดันให้ทับทุกอย่างแน่ๆ
+                            cursor: isMWM ? "default" : (activeRegionType ? "crosshair" : "default"),
+                        }}
                     >
                         {(() => {
                             const v = videoRef.current; if (!v || !v.videoWidth) return null;
-                            const container = overlayRef.current?.getBoundingClientRect();
-                            if (!container) return null;
+                            const container = overlayRef.current?.getBoundingClientRect(); if (!container) return null;
                             const box = getVideoContentBox(v);
                             const left = box.left - container.left, top = box.top - container.top;
                             const sx = box.scaleX, sy = box.scaleY;
 
-                            const pieces = [];
-
-                            // 1) MWM ellipse tool (ถ้ามี)
+                            // ---------- MWM ----------
                             if (isMWM && ellipse) {
                                 const scx = left + ellipse.cx * sx;
                                 const scy = top + ellipse.cy * sy;
                                 const rxS = ellipse.rx * sx;
                                 const ryS = ellipse.ry * sy;
                                 const deg = ellipse.rotationDeg || 0;
-                                pieces.push(
-                                    <svg key="mwm" style={{ position: "absolute", left: 0, top: 0, overflow: "visible" }} onMouseDown={(e) => e.stopPropagation()}>
+                                const vw = container.width, vh = container.height;
+
+                                return (
+                                    <svg
+                                        style={{ position: "absolute", left: 0, top: 0, overflow: "visible", pointerEvents: "none" }}
+                                        width="100%" height="100%" viewBox={`0 0 ${vw} ${vh}`}
+                                    >
                                         <g transform={`translate(${scx} ${scy}) rotate(${deg})`}>
+                                            {/* target sector */}
                                             {(() => {
                                                 const [a1, a2] = getAngles(targetQuadrant);
-                                                return <path d={sectorPathLocal(rxS, ryS, a1, a2)} fill="#0ea5e9" fillOpacity="0.40" />;
+                                                return (
+                                                    <path
+                                                        d={sectorPathLocal(rxS, ryS, a1, a2)}
+                                                        fill="#0ea5e9" fillOpacity="0.40" pointerEvents="none"
+                                                    />
+                                                );
                                             })()}
+                                            {/* ellipse body (ให้ pointerEvents ที่ตัวนี้เท่านั้น) */}
                                             <ellipse
                                                 cx={0} cy={0} rx={rxS} ry={ryS}
                                                 fill="none" stroke="#0ea5e9" strokeWidth="2"
-                                                style={{ cursor: "move" }}
+                                                style={{ cursor: "move", pointerEvents: "all" }}
                                                 onMouseDown={(e) => {
                                                     e.stopPropagation();
                                                     const b = getVideoContentBox(videoRef.current);
@@ -428,10 +468,14 @@ export default function TemplateDetail() {
                                             />
                                             <line x1={-rxS} y1={0} x2={rxS} y2={0} stroke="#0ea5e9" strokeWidth="1.5" />
                                             <line x1={0} y1={-ryS} x2={0} y2={ryS} stroke="#0ea5e9" strokeWidth="1.5" />
-                                            <circle cx={rxS} cy={0} r="6" fill="#0ea5e9" style={{ cursor: "ew-resize" }} onMouseDown={() => setTplDragMode("resizeX")} />
-                                            <circle cx={0} cy={-ryS} r="6" fill="#0ea5e9" style={{ cursor: "ns-resize" }} onMouseDown={() => setTplDragMode("resizeY")} />
+                                            <circle cx={rxS} cy={0} r="6" fill="#0ea5e9" style={{ cursor: "ew-resize", pointerEvents: "all" }}
+                                                onMouseDown={() => setTplDragMode("resizeX")} />
+                                            <circle cx={0} cy={-ryS} r="6" fill="#0ea5e9" style={{ cursor: "ns-resize", pointerEvents: "all" }}
+                                                onMouseDown={() => setTplDragMode("resizeY")} />
                                             <line x1={0} y1={-ryS} x2={0} y2={-ryS - 24} stroke="#0ea5e9" strokeDasharray="4,4" strokeWidth="1" />
-                                            <circle cx={0} cy={-ryS - 24} r="6" fill="#0ea5e9" style={{ cursor: "crosshair" }} onMouseDown={() => setTplDragMode("rotate")} />
+                                            <circle cx={0} cy={-ryS - 24} r="6" fill="#0ea5e9" style={{ cursor: "crosshair", pointerEvents: "all" }}
+                                                onMouseDown={() => setTplDragMode("rotate")} />
+                                            {/* labels */}
                                             {["Q1", "Q2", "Q3", "Q4"].map(q => {
                                                 const m = (midAngleDeg(getAngles(q)) * Math.PI) / 180;
                                                 const lx = 0.55 * rxS * Math.cos(m);
@@ -452,65 +496,92 @@ export default function TemplateDetail() {
                                 );
                             }
 
-                            // 2) Rectangles ที่นิยามแล้ว (EPM/Y)
-                            if (!isMWM && rectangles.length) {
-                                const rotRad = (d) => (d * Math.PI) / 180;
-                                const toScreen = (vx, vy) => ({ x: left + vx * sx, y: top + vy * sy });
-                                pieces.push(
-                                    <svg key="rects" style={{ position: "absolute", left: 0, top: 0, overflow: "visible", pointerEvents: "none" }}>
-                                        {rectangles.map((r) => {
-                                            const p = toScreen(r.x, r.y);
-                                            const w = r.width * sx, h = r.height * sy;
-                                            const cx = p.x + w / 2, cy = p.y + h / 2;
-                                            const ang = rotRad(r.rotation || 0);
-                                            const rotPt = (x, y) => {
-                                                const dx = x - cx, dy = y - cy;
-                                                return { x: cx + dx * Math.cos(ang) - dy * Math.sin(ang), y: cy + dx * Math.sin(ang) + dy * Math.cos(ang) };
-                                            };
-                                            const corners = [
-                                                { x: p.x, y: p.y },
-                                                { x: p.x + w, y: p.y },
-                                                { x: p.x + w, y: p.y + h },
-                                                { x: p.x, y: p.y + h },
-                                            ].map(rotPt);
-                                            const d = `M ${corners[0].x} ${corners[0].y} L ${corners[1].x} ${corners[1].y} L ${corners[2].x} ${corners[2].y} L ${corners[3].x} ${corners[3].y} Z`;
-                                            const sel = selectedRect === r.id;
-                                            return (
-                                                <g key={r.id} style={{ pointerEvents: "none" }}>
-                                                    <text x={cx} y={cy - 10} textAnchor="middle" fontSize="12" fill="#fff" stroke="#0f172a" strokeWidth="1" paintOrder="stroke">
-                                                        {r.name || r.type}
-                                                    </text>
-                                                    <path d={d} fill={r.color} fillOpacity={sel ? 0.18 : 0.10} stroke={r.color} strokeWidth={sel ? 2.2 : 1.6} />
-                                                </g>
-                                            );
-                                        })}
-                                    </svg>
-                                );
-                            }
+                            // ---------- EPM / Y ----------
+                            const vw = container.width, vh = container.height;
+                            const toScreen = (vx, vy) => ({ x: left + vx * sx, y: top + vy * sy });
 
-                            // 3) เส้นกรอบ preview ระหว่างกำลังวาด (ต้องแสดงแม้มี rectangles แล้ว)
-                            if (!isMWM && isDrawing && currentDrawRect) {
-                                pieces.push(
-                                    <div key="preview" style={{ position: "absolute", left: 0, top: 0, pointerEvents: "none" }}>
-                                        <svg style={{ position: "absolute", left: 0, top: 0, overflow: "visible" }}>
+                            return (
+                                <>
+                                    {/* วาดสี่เหลี่ยมทั้งหมด */}
+                                    {!!rectangles.length && (
+                                        <svg
+                                            style={{ position: "absolute", left: 0, top: 0, overflow: "visible", pointerEvents: "none" }}
+                                            width="100%" height="100%" viewBox={`0 0 ${vw} ${vh}`}
+                                        >
+                                            {rectangles.map((r) => {
+                                                const p = toScreen(r.x, r.y);
+                                                const w = r.width * sx, h = r.height * sy;
+                                                const cx = p.x + w / 2, cy = p.y + h / 2;
+                                                const rot = (r.rotation || 0) * Math.PI / 180;
+                                                const rotPt = (x, y) => {
+                                                    const dx = x - cx, dy = y - cy;
+                                                    return {
+                                                        x: cx + dx * Math.cos(rot) - dy * Math.sin(rot),
+                                                        y: cy + dx * Math.sin(rot) + dy * Math.cos(rot)
+                                                    };
+                                                };
+                                                const corners = [
+                                                    { x: p.x, y: p.y }, { x: p.x + w, y: p.y },
+                                                    { x: p.x + w, y: p.y + h }, { x: p.x, y: p.y + h },
+                                                ].map(c => rotPt(c.x, c.y));
+                                                const d = `M ${corners[0].x} ${corners[0].y} L ${corners[1].x} ${corners[1].y} L ${corners[2].x} ${corners[2].y} L ${corners[3].x} ${corners[3].y} Z`;
+                                                return (
+                                                    <g key={r.id} style={{ pointerEvents: "none" }}>
+                                                        <text x={cx} y={cy - 10} textAnchor="middle" fontSize="12"
+                                                            fill="#fff" stroke="#0f172a" strokeWidth="1" paintOrder="stroke">
+                                                            {r.name || r.type}
+                                                        </text>
+                                                        <path
+                                                            d={d}
+                                                            fill={r.color}
+                                                            fillOpacity={0.12}
+                                                            stroke={r.color}
+                                                            strokeWidth={2}
+                                                            vectorEffect="non-scaling-stroke"
+                                                        />
+                                                        {(() => {
+                                                            const isSelected = selectedRect === r.id;
+                                                            return isSelected ? (
+                                                                <path
+                                                                    d={d}
+                                                                    fill="none"
+                                                                    stroke="#ffffffcc"
+                                                                    strokeWidth="1"
+                                                                    strokeDasharray="5,4"
+                                                                    vectorEffect="non-scaling-stroke"
+                                                                />
+                                                            ) : null;
+                                                        })()}
+                                                    </g>
+                                                );
+                                            })}
+                                        </svg>
+                                    )}
+
+                                    {/* เส้นพรีวิวขณะกำลังวาด */}
+                                    {isDrawing && currentDrawRect && (
+                                        <svg
+                                            style={{ position: "absolute", left: 0, top: 0, overflow: "visible", pointerEvents: "none" }}
+                                            width="100%" height="100%" viewBox={`0 0 ${vw} ${vh}`}
+                                        >
                                             <rect
                                                 x={left + currentDrawRect.x * sx}
                                                 y={top + currentDrawRect.y * sy}
                                                 width={currentDrawRect.width * sx}
                                                 height={currentDrawRect.height * sy}
                                                 fill="none"
-                                                stroke={regionSpec.find(r => r.type === activeRegionType)?.color || "#0ea5e9"}
+                                                stroke={(regionSpec.find(rr => rr.type === activeRegionType)?.color) || "#0ea5e9"}
                                                 strokeDasharray="5,5"
-                                                strokeWidth="2"
+                                                strokeWidth="2.5"
+                                                vectorEffect="non-scaling-stroke"
                                             />
                                         </svg>
-                                    </div>
-                                );
-                            }
-
-                            return <>{pieces}</>;
+                                    )}
+                                </>
+                            );
                         })()}
                     </div>
+
                 </div>
 
                 {/* Toolbar */}

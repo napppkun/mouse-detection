@@ -412,7 +412,7 @@ export default function ManageTest() {
                                 style={{ height: 36, padding: "0 14px" }}
                                 onClick={() => startEdit(t)}
                               >
-                                Edit test name
+                                Edit Test Name
                               </button>
                             )}
 
