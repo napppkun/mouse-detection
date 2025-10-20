@@ -63,9 +63,9 @@ export default function ProgressTray() {
     <div className="progress-tray right-bottom">
       {groups.map((G) => {
         const allDone = G.items.every((x) => x.status === "processed");
-        const allTerminated = G.items.every((x) =>
-          ["processed", "failed"].includes(x.status)
-        );
+        // const allTerminated = G.items.every((x) =>
+        //   ["processed", "failed"].includes(x.status)
+        // );
         const isCollapsed = !!collapsed[G.id];
 
         return (
@@ -95,16 +95,14 @@ export default function ProgressTray() {
                   {isCollapsed ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
                 </button>
 
-                {/* dismiss กลุ่มได้เมื่อทุกตัวจบแล้ว (processed/failed) */}
-                {allTerminated && (
-                  <button
-                    className="icon-btn"
-                    onClick={() => removeJobsByTestId(G.id)}
-                    title="Dismiss this test"
-                  >
-                    <X size={18} />
-                  </button>
-                )}
+                {/* ให้ dismiss กลุ่มได้ตลอดเวลา */}
+                <button
+                  className="icon-btn"
+                  onClick={() => removeJobsByTestId(G.id)}
+                  title="Dismiss this test from tray"
+                >
+                  <X size={18} />
+                </button>
               </div>
             </div>
 
@@ -121,16 +119,15 @@ export default function ProgressTray() {
                       <div className="bar">
                         <div className="fill" style={{ width: `${pct}%` }} />
                       </div>
-                      {(done || failed) && (
-                        <button
-                          onClick={() => removeJob(j.id)}
-                          className="icon-btn"
-                          aria-label="Dismiss"
-                          title="Dismiss"
-                        >
-                          <X size={14} />
-                        </button>
-                      )}
+                      {/* ให้ dismiss แถวได้ตลอดเวลา */}
+                      <button
+                        onClick={() => removeJob(j.id)}
+                        className="icon-btn"
+                        aria-label="Dismiss"
+                        title="Dismiss this video from tray"
+                      >
+                        <X size={14} />
+                      </button>
                     </div>
                   );
                 })}
