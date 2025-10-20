@@ -466,7 +466,7 @@ export default function ManageTest() {
                             </button>
 
                             {/* Rerun Processing Test */}
-                            <button
+                            {/* <button
                               type="button"
                               className="btn"
                               style={{ height: 36, padding: "0 14px" }}
@@ -474,7 +474,7 @@ export default function ManageTest() {
                               onClick={() => rerunTest(t)}
                             >
                               Re-run Test
-                            </button>
+                            </button> */}
 
                             {/* Edit / Save test name */}
                             {isEditing ? (

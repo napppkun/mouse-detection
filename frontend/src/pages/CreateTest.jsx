@@ -664,41 +664,6 @@ export default function CreateTest({ onNext, onPrev }) {
           </div>
         )}
 
-        {/* <div className="form-row onecol" style={{ marginTop: 10 }}>
-          <div
-            className="btn-group"
-            style={{ justifyContent: "space-between", width: "100%" }}
-          >
-            <label
-              className="btn"
-              style={{
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 8,
-              }}
-            >
-              <Upload size={16} />
-              Choose File
-              <input
-                type="file"
-                multiple
-                accept="video/*"
-                onChange={handleVideoUpload}
-                hidden
-              />
-            </label>
-            <div style={{ color: "#6b7280" }}>
-              {formData.videoPairs.length > 0
-                ? `${formData.videoPairs.length}/${MAX_VIDEOS} video(s)`
-                : "No videos uploaded"}
-            </div>
-          </div>
-          <div className="muted" style={{ marginTop: 6 }}>
-            * You can upload up to {MAX_VIDEOS} videos per test.
-          </div>
-        </div> */}
-
         {/* Group upload sections */}
         {formData.groups.map((gid) => {
           const mice = formData.miceByGroup[gid] || [];

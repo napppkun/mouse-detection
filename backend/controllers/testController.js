@@ -387,6 +387,7 @@ export const analyzeTest = async (req, res) => {
         mazeType: analyzerMaze,
         type: analyzerMaze,
         items,
+        webhookUrl: `${process.env.BACKEND_URL || req.protocol + "://" + req.get("host")}/api/tests/analyze/webhook`,
       },
       { timeout: 10000 }
     );

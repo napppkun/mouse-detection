@@ -453,6 +453,23 @@ def _run_batch(body: AnalyzeBatchBody):
     except Exception:
       logger.warning("webhook post failed: %s", body.webhookUrl, exc_info=True)
 
+def _post_webhook_single(webhook_url: str, secret: str, test_id: str, result: dict, maze: str):
+  try:
+    payload = {
+      "secret": secret,
+      "testId": test_id,
+      "mazeType": maze,
+      "results": [result],  # analyzerWebhook รองรับเป็นลิสต์
+    }
+    requests.post(
+      webhook_url,
+      json=payload,
+      headers={"x-progress-secret": secret},
+      timeout=15,
+    )
+  except Exception as e:
+    logger.warning("webhook(single) post failed: %s", e)
+
 # ────────── /analyze/batch  ──────────
 @app.post("/analyze/batch")
 def analyze_batch(body: AnalyzeBatchBody):
@@ -482,9 +499,21 @@ def analyze_batch_async(body: AnalyzeBatchBody):
     if maze not in ("epm", "ymaze", "mwm"):
         raise HTTPException(status_code=422, detail=f"Unknown maze type: {body.mazeType}")
 
+    webhook_url = getattr(body, "webhookUrl", None)
+    test_id = getattr(body, "testId", None)
+
     # ส่งเข้า EXECUTOR แล้ว “รีบตอบกลับ”
     for item in body.items:
-        EXECUTOR.submit(_process_one_item, maze, item)
+      def _run_and_webhook(it=item):
+        res = _process_one_item(maze, it)
+        # ยิง webhook ต่อวิดีโอถ้ามีการตั้งค่าไว้
+        if webhook_url and test_id:
+          try:
+            _post_webhook_single(webhook_url, PROGRESS_SECRET, test_id, res, maze)
+          except Exception:
+            logger.warning("post webhook failed for %s", it.id, exc_info=True)
+        return res
+      EXECUTOR.submit(_run_and_webhook)
 
     return {"accepted": len(body.items)}
 
