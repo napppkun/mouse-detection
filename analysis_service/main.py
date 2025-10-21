@@ -136,6 +136,7 @@ class Item(BaseModel):
     endSec: Optional[float] = None
     targetQuadrant: Optional[str] = None  # สำหรับ MWM
     template: Optional[EllipseTemplate] = None
+    runId: Optional[int] = None
 
     class Config:
         extra = "allow"
@@ -187,7 +188,7 @@ def _download_to_temp(url: str, timeout_sec: int = 600) -> str:
   raise last_err
 
 # ────────── Notify video report ──────────
-def notify_video_report(job_id, status, result_urls=None, metrics=None, error=None):
+def notify_video_report(job_id, status, result_urls=None, metrics=None, error=None, run_id=None):
     try:
         body = {
             "secret": PROGRESS_SECRET,
@@ -197,6 +198,7 @@ def notify_video_report(job_id, status, result_urls=None, metrics=None, error=No
             "urls": result_urls or {},            # ← alias เผื่อ handler เก่า
             "metrics": metrics or {},
             "error": error,
+            "runId": run_id,
         }
         requests.post(f"{BACKEND_URL}/api/videos/internal/report", json=body, timeout=10)
     except Exception as e:
@@ -206,6 +208,8 @@ def notify_video_report(job_id, status, result_urls=None, metrics=None, error=No
 def _process_one_item(maze: str, item: Item) -> dict:
     job_id = item.id
     try:
+      run_id = int(item.runId or int(time.time() * 1000))
+
       # [LOG] ก่อน validate: ดูจำนวน/ชนิดกล่องที่เข้ามา
       logger.info("[PROC] maze=%s id=%s boxes=%d types=%s",
         maze, job_id, len(item.boxes), [getattr(b, "type", None) for b in item.boxes])
@@ -225,11 +229,11 @@ def _process_one_item(maze: str, item: Item) -> dict:
         end = start + 1.0
 
       job_progress[job_id] = {"status":"processing", "percent": 0.0}
-      push_progress(job_id, 0.0, "processing", "start")
+      push_progress(job_id, 0.0, "processing", "start", run_id=run_id)
 
       def hook(p):
         job_progress[job_id] = {"status":"processing","percent": p}
-        push_progress(job_id, p, "processing", "progress")
+        push_progress(job_id, p, "processing", "progress", run_id=run_id)
 
       boxes = [b.dict() for b in item.boxes]
       if maze == "mwm" and item.template:
@@ -312,14 +316,16 @@ def _process_one_item(maze: str, item: Item) -> dict:
           "excelGcsPath": None
         },
         metrics=metrics,
+        run_id=run_id
       )
 
       job_progress[job_id] = {"status":"processed","percent": 1.0}
-      push_progress(job_id, 1.0, "processed", "done")
+      push_progress(job_id, 1.0, "processed", "done", run_id=run_id)
 
       return {
         "id": job_id,
         "status": "ok",
+        "runId": run_id,
         "metrics": metrics,
         "resultUrls": {
           "processedVideo": video_url,
@@ -332,15 +338,15 @@ def _process_one_item(maze: str, item: Item) -> dict:
     except requests.HTTPError as he:
       err = f"download: {str(he)}"
       job_progress[job_id] = {"status":"failed","percent":0.0,"error": err}
-      push_progress(job_id, 0.0, "failed", err)
-      notify_video_report(job_id, "failed", error=err)      # แจ้ง "failed" ต่อวิดีโอ
+      push_progress(job_id, 0.0, "failed", err, run_id=run_id)
+      notify_video_report(job_id, "failed", error=err, run_id=run_id)      # แจ้ง "failed" ต่อวิดีโอ
       return {"id": job_id, "status":"failed", "error": err}
     
     except Exception as e:
       err = str(e)
       job_progress[job_id] = {"status":"failed","percent": job_progress.get(job_id,{}).get("percent",0.0),"error": err}
-      push_progress(job_id, job_progress[job_id]["percent"], "failed", err)
-      notify_video_report(job_id, "failed", error=err)      # แจ้ง "failed" ต่อวิดีโอ
+      push_progress(job_id, job_progress[job_id]["percent"], "failed", err, run_id=run_id)
+      notify_video_report(job_id, "failed", error=err, run_id=run_id)      # แจ้ง "failed" ต่อวิดีโอ
       return {"id": job_id, "status":"failed", "error": err}
     
     finally:
@@ -385,10 +391,19 @@ def _run_batch(body: AnalyzeBatchBody):
             str(item.endSec), item.src)
 
       # 3) วิเคราะห์ (งานหนัก ไม่มี client-timeout มากวน)
+      boxes = [b.dict() for b in item.boxes]
+      if maze == "mwm" and getattr(item, "template", None):
+        t = item.template
+        boxes.append({
+          "type": "ellipse",
+          "cx": float(t.cx), "cy": float(t.cy),
+          "rx": float(t.rx), "ry": float(t.ry),
+          "rotation": float(getattr(t, "rotationDeg", 0.0)),
+        })
       outs = process_video_analysis(
         video_path=local_video,
         maze_type=maze,
-        bounding_boxes=[b.dict() for b in item.boxes],
+        bounding_boxes=boxes,
         start_time=float(item.startSec or 0),
         end_time=float(item.endSec) if item.endSec is not None else None,
         target_quadrant=item.targetQuadrant,
@@ -453,13 +468,13 @@ def _run_batch(body: AnalyzeBatchBody):
     except Exception:
       logger.warning("webhook post failed: %s", body.webhookUrl, exc_info=True)
 
-def _post_webhook_single(webhook_url: str, secret: str, test_id: str, result: dict, maze: str):
+def _post_webhook_single(webhook_url: str, secret: str, test_id: str, result: dict, maze: str, run_id: int):
   try:
     payload = {
       "secret": secret,
       "testId": test_id,
       "mazeType": maze,
-      "results": [result],  # analyzerWebhook รองรับเป็นลิสต์
+      "results": [{ **result, "runId": run_id }],
     }
     requests.post(
       webhook_url,
@@ -509,7 +524,7 @@ def analyze_batch_async(body: AnalyzeBatchBody):
         # ยิง webhook ต่อวิดีโอถ้ามีการตั้งค่าไว้
         if webhook_url and test_id:
           try:
-            _post_webhook_single(webhook_url, PROGRESS_SECRET, test_id, res, maze)
+            _post_webhook_single(webhook_url, PROGRESS_SECRET, test_id, res, maze, int(getattr(it, "runId", None) or int(time.time()*1000)))
           except Exception:
             logger.warning("post webhook failed for %s", it.id, exc_info=True)
         return res
@@ -622,13 +637,14 @@ def get_status(video_id: str):
         raise HTTPException(status_code=404, detail="Video not found")
     return {"video_id": video_id, "status": status}
 
-def push_progress(job_id, progress, status=None, stage=None):
+def push_progress(job_id, progress, status=None, stage=None, run_id=None):
   payload = {
     "secret": PROGRESS_SECRET,
     "id": job_id,
     "progress": float(progress),
     "status": status,
     "stage": stage,
+    "runId": run_id,
   }
   url = f"{BACKEND_URL}/api/progress/push"
 

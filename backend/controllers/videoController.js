@@ -427,7 +427,7 @@ export const getVideoAnalysis = async (req, res) => {
 // internal API: รับรายงานผลการประมวลผลจาก analysis_service (ผ่าน secret)
 export const internalReport = async (req, res) => {
   try {
-    const { secret, id, status, resultUrls, metrics } = req.body || {};
+    const { secret, id, status, resultUrls, metrics, runId } = req.body || {};
     if (secret !== process.env.PROGRESS_SECRET)
       return res.status(403).json({ ok: false });
     if (!id || !status)
@@ -440,8 +440,10 @@ export const internalReport = async (req, res) => {
       patch.processedPath = resultUrls?.processedVideo || undefined;
       patch.excelPath = resultUrls?.excelFile || undefined;
       patch.analysisResults = metrics || undefined;
+      if (runId) patch.runId = Number(runId);
     } else if (status === "failed") {
       patch.status = "failed";
+      if (runId) patch.runId = Number(runId);
     }
 
     // ถ้า metrics ใน payload ว่าง → ลองอ่านจาก Result แล้ว backfill ใส่ Video.analysisResults
@@ -708,8 +710,8 @@ export const internalReport = async (req, res) => {
           }
         }
       }
-      return res.json({ ok: true });
     }
+    return res.json({ ok: true });
   } catch (e) {
     return res.status(500).json({ ok: false, message: e.message });
   }

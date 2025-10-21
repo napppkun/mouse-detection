@@ -198,16 +198,15 @@ export function ProgressProvider({ children }) {
     if (!arr?.length || !u) return;
     setJobs((prev) => {
       const existing = new Map(prev.map((j) => [j.id, j]));
-      arr.forEach((j) =>
+      arr.forEach((j) => {
+        const prev = existing.get(j.id) || {};
         existing.set(j.id, {
-          ...existing.get(j.id), // เอาของเก่ามาก่อน
-          ...j,                  // ของใหม่ทับ
-          status: "queued",     // รีเซ็ตสถานะสำหรับรอบใหม่
+          ...prev,   // ของเก่ามาก่อน (เผื่อ label)
+          ...j,      // ของใหม่ทับ (id,label,testId ฯลฯ)
+          status: "queued",
           progress: 0,
-          ...existing.get(j.id),
-          ...j,
-        })
-      );
+        });
+      });
       const next = Array.from(existing.values());
       saveToStorage(u.uid, next);
       openStream(next.map((j) => j.id)).catch(() => { });

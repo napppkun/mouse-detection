@@ -1,15 +1,6 @@
 // models/videoModel.js
 import mongoose from "mongoose";
 
-const timeInZoneSchema = new mongoose.Schema(
-  {
-    zone: String,
-    timeSeconds: Number,
-    percentage: Number,
-  },
-  { _id: false }
-);
-
 const videoSchema = new mongoose.Schema(
   {
     // ===== file meta (GCS) =====
@@ -50,6 +41,7 @@ const videoSchema = new mongoose.Schema(
     targetQuadrant: { type: String, enum: ["Q1", "Q2", "Q3", "Q4"] },
 
     // ===== processing status & outputs =====
+    runId: { type: Number, default: 0 },
     status: {
       type: String,
       enum: ["uploaded", "processing", "processed", "failed"],
@@ -80,7 +72,6 @@ const videoSchema = new mongoose.Schema(
 // ---------- Indexes ----------
 videoSchema.index({ ownerUid: 1, test: 1 });
 videoSchema.index({ ownerUid: 1, mouseCode: 1 });
-videoSchema.index({ status: 1 });
 videoSchema.index({ test: 1, dayIndex: 1 });
 
 // ---------- Middleware & Validation ----------

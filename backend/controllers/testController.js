@@ -8,7 +8,6 @@ import {
   uploadBufferToGCS,
 } from "../services/gcsUploader.js";
 import archiver from "archiver";
-import path from "path";
 import ExcelJS from "exceljs";
 import {
   Result,
@@ -246,8 +245,9 @@ export const analyzeTest = async (req, res) => {
     const items = [];
     const missing = [];
     const noBox = [];
+    const runId = Date.now();
 
-    for (const v of vids) {
+    for (const v of vidsToRun) {
       const src = await getReadableUrlFromDoc(v);
       if (!src) {
         missing.push({ _id: String(v._id), mouseCode: v.mouseCode });
@@ -324,6 +324,7 @@ export const analyzeTest = async (req, res) => {
         boxes,
         startSec,
         endSec,
+        runId,
         ...(mazeShort === "mwm" ? { targetQuadrant: tq } : {}),
         ...(ellipseTemplate ? { template: ellipseTemplate } : {}),
       });
@@ -365,6 +366,7 @@ export const analyzeTest = async (req, res) => {
             status: "processing",
             trimStartSec: i.startSec,
             trimEndSec: i.endSec,
+            runId,
           },
         },
       },
@@ -387,9 +389,10 @@ export const analyzeTest = async (req, res) => {
         mazeType: analyzerMaze,
         type: analyzerMaze,
         items,
+        startedAt: runId,
         webhookUrl: `${process.env.BACKEND_URL || req.protocol + "://" + req.get("host")}/api/tests/analyze/webhook`,
       },
-      { timeout: 10000 }
+      { timeout: 60000 }
     );
 
     return res.json({
@@ -487,6 +490,19 @@ export const analyzerWebhook = async (req, res) => {
       const vidId = r?.id;
       if (!vidId) continue;
 
+      // รับ runId จาก result หรือ payload root
+      const incomingRun = Number(r?.runId || req.body?.runId || req.body?.startedAt || 0);
+
+      // อ่าน runId ล่าสุดใน DB เพื่อตัดสินใจเมินอัปเดตเก่า
+      const vdoc = await Video.findById(vidId)
+        .select("ownerUid ownerEmail mouseCode test dailyRecord runId status")
+        .lean();
+      const currentRun = Number(vdoc?.runId || 0);
+      if (incomingRun && currentRun && incomingRun < currentRun) {
+        // อัปเดตเก่า/มาช้า ข้ามไป
+        continue;
+      }
+
       // รองรับหลายรูปแบบของ payload
       const resultUrls =
         pickDeep(r, ["resultUrls", "result.urls", "urls", "outputs"]) || {};
@@ -520,12 +536,13 @@ export const analyzerWebhook = async (req, res) => {
             : "epm");
 
       if (okLike.includes(st) || hasVideo || hasExcel) {
-        // ✅ success path: อัปเดตเอกสาร Video
+        // success path: อัปเดตเอกสาร Video
         await Video.updateOne(
           { _id: vidId },
           {
             $set: {
               status: "processed",
+              runId: incomingRun || currentRun || Date.now(),
               processedPath: pickDeep(resultUrls, [
                 "processedVideo", "video", "processed_video", "overlay", "outputVideo", "output_video",
               ]) || undefined,
@@ -542,11 +559,6 @@ export const analyzerWebhook = async (req, res) => {
             },
           }
         );
-
-        // เตรียมข้อมูลประกอบเพื่อบันทึกผลลัพธ์เชิงสถิติ
-        const vdoc = await Video.findById(vidId)
-          .select("ownerUid ownerEmail mouseCode test dailyRecord")
-          .lean();
 
         // group/groupName (จาก DailyRecord หรือกลุ่มแรกของ Test)
         const tdoc = await Test.findById(vdoc?.test)
@@ -653,8 +665,20 @@ export const analyzerWebhook = async (req, res) => {
           );
         }
       } else {
-        // ❌ งานนี้ fail
-        await Video.updateOne({ _id: vidId }, { $set: { status: "failed" } });
+        // ลง failed เฉพาะกรณีได้รับสถานะล้มเหลวชัดเจน
+        const isExplicitFail = st === "failed" || st === "error";
+        if (isExplicitFail && (!vdoc || (vdoc.status !== "processed" && (incomingRun >= currentRun)))) {
+          console.warn("[analyzerWebhook] marking FAILED", {
+            vidId, incomingRun, currentRun, st, hasVideo, hasExcel
+          });
+          await Video.updateOne(
+            { _id: vidId },
+            { $set: { status: "failed", runId: incomingRun || currentRun || Date.now() } }
+          );
+        } else {
+          // payload ยังไม่ครบ → ข้ามไป ไม่เปลี่ยนสถานะ
+          console.warn("[analyzerWebhook] skip marking failed for", vidId, "st=", st, "hasVideo:", hasVideo, "hasExcel:", hasExcel);
+        }
       }
     }
 
