@@ -24,11 +24,14 @@ load_dotenv(override=True)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("video_processor")
 
+BACKEND_URL = os.getenv("BACKEND_URL") or "http://127.0.0.1:5000"
+FRONTEND_URL = os.getenv("FRONTEND_URL") or "http://127.0.0.1:3000"
+
 app = FastAPI(title="Mouse Analysis Service")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5000", "http://localhost:3000", "https://backend-360969085581.asia-southeast1.run.app", "https://frontend-360969085581.asia-southeast1.run.app"],
+    allow_origins=["http://localhost:5000", "http://localhost:3000", BACKEND_URL, FRONTEND_URL],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -45,7 +48,6 @@ processing_status = {}
 processing_results = {}
 job_progress: Dict[str, dict] = {}  # {job_id: {"status": "...", "percent": 0.0}}
 
-BACKEND_URL = os.getenv("BACKEND_URL") or "http://127.0.0.1:5000"
 PROGRESS_SECRET = os.getenv("PROGRESS_SECRET")
 if not PROGRESS_SECRET:
     raise RuntimeError("PROGRESS_SECRET must be set")

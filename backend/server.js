@@ -29,12 +29,11 @@ const parseList = (v) =>
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean)
-    .map((s) => s.replace(/\/+$/, "")); // ตัด / ท้าย
+    .map((s) => s.replace(/\/+$/, "")); 
 
 const allowOrigins = [
   ...parseList(process.env.CORS_ORIGINS),
   ...parseList(process.env.FRONTEND_URL),
-  "https://frontend-360969085581.asia-southeast1.run.app",
   "http://localhost:3000",
   "http://127.0.0.1:3000",
 ];

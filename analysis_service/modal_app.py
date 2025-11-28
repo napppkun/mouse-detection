@@ -8,7 +8,6 @@ BASE_ENV = {
     "USE_CUDA": "1",
     "GPU_WORKERS": "1",
     "CPU_WORKERS": "2",
-    "BACKEND_URL": "https://backend-360969085581.asia-southeast1.run.app",
 }
 
 image = modal.Image.from_dockerfile("Dockerfile").env(BASE_ENV)

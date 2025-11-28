@@ -2,3 +2,6 @@
 .vscode
 .idea
 .readmes
+.git
+.gitignore
+README.md

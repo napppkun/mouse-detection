@@ -6,7 +6,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import "../styles/app.css";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend,
-  CartesianGrid, ResponsiveContainer,
+  CartesianGrid, ResponsiveContainer, Label
 } from "recharts";
 
 const BACKEND_URL = window._env_?.BACKEND_URL || process.env.BACKEND_URL || "http://localhost:5000";
@@ -528,32 +528,38 @@ export default function TestDetail() {
                   <div style={{ width: "100%", height: 360 }}>
                     <ResponsiveContainer>
                       {vizData.kind === "epm" ? (
-                        <BarChart data={vizData.data} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
+                        <BarChart data={vizData.data} margin={{ top: 8, right: 16, left: 30, bottom: 32 }}>
                           <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="group" />
-                          <YAxis label={{ value: "Seconds", angle: -90, position: "insideLeft" }} />
+                          <XAxis dataKey="group" >
+                            <Label value="Group" offset={-10} position="insideBottom" />
+                          </XAxis>
+                          <YAxis label={{ value: "Seconds", angle: -90, position: "center", dx: -15 }} />
                           <Tooltip />
-                          <Legend />
+                          <Legend verticalAlign="bottom" wrapperStyle={{ paddingTop: "16px" }} />
                           {/* สี: เปิด=เขียว ปิด=แดง */}
                           <Bar dataKey="open" name="Open arms (s)" fill="#22c55e" />
                           <Bar dataKey="closed" name="Closed arms (s)" fill="#ef4444" />
                         </BarChart>
                       ) : vizData.kind === "ymaze" ? (
-                        <BarChart data={vizData.data} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
+                        <BarChart data={vizData.data} margin={{ top: 8, right: 16, left: 30, bottom: 32 }}>
                           <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="group" />
-                          <YAxis label={{ value: "% Alternation", angle: -90, position: "insideLeft" }} domain={[0, 100]} />
+                          <XAxis dataKey="group" >
+                            <Label value="Group" offset={-10} position="insideBottom" />
+                          </XAxis>
+                          <YAxis label={{ value: "% Alternation", angle: -90, position: "center", dx: -15 }} domain={[0, 100]} />
                           <Tooltip />
-                          <Legend />
+                          <Legend verticalAlign="bottom" wrapperStyle={{ paddingTop: "16px" }} />
                           <Bar dataKey="alternationPct" name="Percent alternation" fill="#3b82f6" />
                         </BarChart>
                       ) : (
-                        <BarChart data={vizData.data} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
+                        <BarChart data={vizData.data} margin={{ top: 8, right: 16, left: 30, bottom: 32 }}>
                           <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="group" />
-                          <YAxis label={{ value: "Seconds (Target quadrant)", angle: -90, position: "insideLeft" }} />
+                          <XAxis dataKey="group" >
+                            <Label value="Group" offset={-10} position="insideBottom" />
+                          </XAxis>
+                          <YAxis label={{ value: "Seconds (Target quadrant)", angle: -90, position: "center", dx: -15 }} />
                           <Tooltip />
-                          <Legend />
+                          <Legend verticalAlign="bottom" wrapperStyle={{ paddingTop: "16px" }} />
                           <Bar dataKey="targetTime" name={`Time in ${targetQuadrant}`} fill="#0ea5e9" />
                         </BarChart>
                       )}
