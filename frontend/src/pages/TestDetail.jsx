@@ -23,11 +23,12 @@ export default function TestDetail() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
 
-  const [activeGroupId, setActiveGroupId] = useState("ALL");
-  const [activeMouse, setActiveMouse] = useState("");
-
   const [idToken, setIdToken] = useState("");
   const tokenRef = useRef("");
+
+  // Visualization states
+  const [vizTab, setVizTab] = useState("test"); // 'mouse' | 'group' | 'test'
+  const [selectedGroupForViz, setSelectedGroupForViz] = useState("ALL");
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
@@ -98,74 +99,6 @@ export default function TestDetail() {
     [downloads]
   );
 
-  const groupList = useMemo(() => {
-    const details = Array.isArray(test?.groupDetails) ? test.groupDetails : null;
-    const populated =
-      Array.isArray(test?.groups) && test.groups.length && typeof test.groups[0] === "object"
-        ? test.groups
-        : null;
-
-    const base = [{ _id: "ALL", name: "All", mice: [] }];
-    if (details) return base.concat(details);
-    if (populated)
-      return base.concat(populated.map((g) => ({ _id: String(g._id), name: g.name || "Group", mice: [] })));
-    return base;
-  }, [test]);
-
-  const miceAll = useMemo(
-    () => processedItems.map((i) => i.mouseCode).filter(Boolean),
-    [processedItems]
-  );
-
-  const miceByGroup = useMemo(() => {
-    if (Array.isArray(test?.groupDetails)) {
-      const m = new Map();
-      for (const g of test.groupDetails) {
-        const arr = Array.isArray(g.mice) ? g.mice : [];
-        const codes = arr
-          .map((x) => {
-            if (typeof x === "string") return x;
-            if (!x || typeof x !== "object") return "";
-            return x.mouseCode || x.code || x.name || "";
-          })
-          .filter(Boolean);
-        m.set(String(g._id), codes);
-      }
-      const union = [...new Set([...(m.get("ALL") || []), ...miceAll])];
-      m.set("ALL", union.length ? union : miceAll);
-      return m;
-    }
-    return new Map([["ALL", miceAll]]);
-  }, [test, miceAll]);
-
-  const processedMouseSet = useMemo(() => new Set(miceAll), [miceAll]);
-
-  const miceInActiveGroup = useMemo(() => {
-    const list = activeGroupId === "ALL" ? miceAll : (miceByGroup.get(activeGroupId) || []);
-    return list.filter((m) => processedMouseSet.has(m));
-  }, [activeGroupId, miceAll, miceByGroup, processedMouseSet]);
-
-  const activeMouseItem = useMemo(
-    () => (activeMouse ? processedItems.find((x) => x.mouseCode === activeMouse) || null : null),
-    [activeMouse, processedItems]
-  );
-
-  useEffect(() => {
-    if (!loading && groupList.length && !groupList.find((g) => g._id === activeGroupId)) {
-      setActiveGroupId("ALL");
-    }
-  }, [loading, groupList, activeGroupId]);
-
-  useEffect(() => {
-    if (!loading) {
-      if (miceInActiveGroup.length === 0) {
-        setActiveMouse("");
-      } else if (!miceInActiveGroup.includes(activeMouse)) {
-        setActiveMouse(miceInActiveGroup[0]);
-      }
-    }
-  }, [loading, miceInActiveGroup, activeMouse]);
-
   const viaProxy = (rawUrl, filename = "", opts = {}) => {
     const params = new URLSearchParams({
       url: rawUrl,
@@ -207,14 +140,6 @@ export default function TestDetail() {
     ? `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(reportUrl)}`
     : "";
 
-  function extOf(u = "") {
-    try {
-      return (new URL(u).pathname.split(".").pop() || "").toLowerCase();
-    } catch {
-      return "";
-    }
-  }
-
   async function downloadAllZip() {
     try {
       const resp = await fetch(`${API_BASE}/${id}/downloads/zip`, {
@@ -246,10 +171,9 @@ export default function TestDetail() {
     }
   }
 
-  // === Visualization helpers (robust extractors) ===
+  // === Visualization helpers ===
   const behavior = String(test?.behaviorTest || "").toLowerCase();
   const targetQuadrant = String(test?.targetQuadrant || "Q1").toUpperCase();
-  const [vizTab, setVizTab] = useState("test"); // 'mouse' | 'group' | 'test'
 
   const getGroupNameOfMouse = (mouseCode) => {
     if (!Array.isArray(test?.groupDetails)) return "Ungrouped";
@@ -272,7 +196,6 @@ export default function TestDetail() {
     return undefined;
   };
 
-  // แกะ metrics ให้ตรงชนิดก่อน: รับทั้ง flat และแบบ {epm|ymaze|mwm:{...}}
   const pickCoreMetrics = (raw) => {
     if (!raw || typeof raw !== "object") return {};
     if (raw.epm) return raw.epm;
@@ -283,12 +206,10 @@ export default function TestDetail() {
 
   const extractEPM = (rawRes) => {
     const res = pickCoreMetrics(rawRes);
-    // 1) direct fields
     const open = pickNum(res, ["time_open", "timeOpen", "openTime", "open_time_sec", "open_total_seconds"]);
     const closed = pickNum(res, ["time_closed", "timeClosed", "closedTime", "closed_time_sec", "closed_total_seconds"]);
     if (open !== undefined && closed !== undefined) return { open, closed };
 
-    // 2) regions dict
     const reg = res?.regions || res?.per_region || res?.regionStats || null;
     if (reg) {
       const o1 = pickNum(reg?.open_arm_1, ["time", "time_sec", "seconds", "dwell"]);
@@ -299,7 +220,7 @@ export default function TestDetail() {
       const closedSum = [c1, c2].filter((x) => x !== undefined).reduce((a, b) => a + b, 0);
       if (!isNaN(openSum) || !isNaN(closedSum)) return { open: openSum || 0, closed: closedSum || 0 };
     }
-    // 3) common payload ของฝั่ง backend: open_arm_1/2, closed_arm_1/2
+
     const oa1 = pickNum(res, ["open_arm_1"]); const oa2 = pickNum(res, ["open_arm_2"]);
     const ca1 = pickNum(res, ["closed_arm_1"]); const ca2 = pickNum(res, ["closed_arm_2"]);
     if ([oa1, oa2, ca1, ca2].some((v) => v !== undefined)) {
@@ -312,7 +233,6 @@ export default function TestDetail() {
 
   const extractYmaze = (rawRes) => {
     const res = pickCoreMetrics(rawRes);
-    // summary.alternation_percent (ที่ webhook/รายงานใช้)
     const pctFromSummary = pickNum(res?.summary, ["alternation_percent"]);
     if (pctFromSummary !== undefined) return { alternationPct: pctFromSummary };
     const pct = pickNum(res, [
@@ -327,7 +247,6 @@ export default function TestDetail() {
 
   const extractMWM = (rawRes) => {
     const metrics = pickCoreMetrics(rawRes);
-    // direct fields
     const t = pickNum(metrics, [
       "target_quadrant_time",
       "target_quadrant_time_sec",
@@ -337,10 +256,8 @@ export default function TestDetail() {
     ]);
     if (t !== undefined) return { targetTime: t };
 
-    // quadrant dict
     const quad = metrics?.quadrants || metrics?.per_quadrant || metrics?.regions || null;
     if (quad && quad[targetQuadrant]) {
-      // รองรับทั้ง object { time: … } และเลขตรง ๆ
       if (typeof quad[targetQuadrant] === "number") {
         return { targetTime: quad[targetQuadrant] };
       }
@@ -350,7 +267,7 @@ export default function TestDetail() {
     return null;
   };
 
-  // Aggregate to per-group dataset
+  // Build visualization data
   const vizData = useMemo(() => {
     const rows = [];
     for (const item of processedItems) {
@@ -360,18 +277,18 @@ export default function TestDetail() {
 
       if (behavior.includes("elevated") || behavior.includes("epm")) {
         const epm = extractEPM(res);
-        if (epm) rows.push({ group, ...epm });
+        if (epm) rows.push({ group, mouseCode: item.mouseCode, ...epm });
       } else if (behavior.includes("ymaze") || behavior === "y-maze" || behavior === "y maze") {
         const y = extractYmaze(res);
-        if (y) rows.push({ group, ...y });
+        if (y) rows.push({ group, mouseCode: item.mouseCode, ...y });
       } else if (behavior.includes("mwm") || behavior.includes("morris")) {
         const m = extractMWM(res);
-        if (m) rows.push({ group, ...m });
+        if (m) rows.push({ group, mouseCode: item.mouseCode, ...m });
       }
     }
-    if (!rows.length) return { kind: "none", data: [] };
+    if (!rows.length) return { kind: "none", data: [], rawRows: [] };
 
-    // group -> averages
+    // Per Test: group averages
     const by = new Map();
     for (const r of rows) {
       if (!by.has(r.group)) by.set(r.group, []);
@@ -384,7 +301,7 @@ export default function TestDetail() {
         const closed = arr.reduce((a, b) => a + (b.closed || 0), 0) / arr.length;
         return { group, open: +open.toFixed(2), closed: +closed.toFixed(2) };
       });
-      return { kind: "epm", data };
+      return { kind: "epm", data, rawRows: rows };
     }
 
     if (behavior.includes("ymaze") || behavior === "y-maze" || behavior === "y maze") {
@@ -392,7 +309,7 @@ export default function TestDetail() {
         const pct = arr.reduce((a, b) => a + (b.alternationPct || 0), 0) / arr.length;
         return { group, alternationPct: +pct.toFixed(2) };
       });
-      return { kind: "ymaze", data };
+      return { kind: "ymaze", data, rawRows: rows };
     }
 
     if (behavior.includes("mwm") || behavior.includes("morris")) {
@@ -400,11 +317,92 @@ export default function TestDetail() {
         const t = arr.reduce((a, b) => a + (b.targetTime || 0), 0) / arr.length;
         return { group, targetTime: +t.toFixed(2) };
       });
-      return { kind: "mwm", data };
+      return { kind: "mwm", data, rawRows: rows };
     }
 
-    return { kind: "none", data: [] };
+    return { kind: "none", data: [], rawRows: [] };
   }, [processedItems, behavior, test, targetQuadrant]);
+
+  // Per Group: individual mice per group
+  const vizDataPerGroup = useMemo(() => {
+    if (!vizData.rawRows || vizData.kind === "none") return [];
+    
+    const rowsByGroup = new Map();
+    for (const row of vizData.rawRows) {
+      if (!rowsByGroup.has(row.group)) rowsByGroup.set(row.group, []);
+      rowsByGroup.get(row.group).push(row);
+    }
+
+    return Array.from(rowsByGroup.entries()).map(([groupName, rows]) => {
+      if (vizData.kind === "epm") {
+        const chartData = rows.map(r => ({
+          mouse: r.mouseCode,
+          open: r.open || 0,
+          closed: r.closed || 0
+        }));
+        return { group: groupName, kind: "epm", data: chartData };
+      } else if (vizData.kind === "ymaze") {
+        const chartData = rows.map(r => ({
+          mouse: r.mouseCode,
+          alternationPct: r.alternationPct || 0
+        }));
+        return { group: groupName, kind: "ymaze", data: chartData };
+      } else if (vizData.kind === "mwm") {
+        const chartData = rows.map(r => ({
+          mouse: r.mouseCode,
+          targetTime: r.targetTime || 0
+        }));
+        return { group: groupName, kind: "mwm", data: chartData };
+      }
+      return null;
+    }).filter(Boolean);
+  }, [vizData]);
+
+  // Render chart helper
+  const renderChart = (data, kind, xKey, xLabel) => {
+    if (kind === "epm") {
+      return (
+        <BarChart data={data} margin={{ top: 8, right: 16, left: 30, bottom: 32 }}>
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis dataKey={xKey}>
+            <Label value={xLabel} offset={-10} position="insideBottom" />
+          </XAxis>
+          <YAxis label={{ value: "Seconds", angle: -90, position: "center", dx: -15 }} />
+          <Tooltip />
+          <Legend verticalAlign="bottom" wrapperStyle={{ paddingTop: "16px" }} />
+          <Bar dataKey="open" name="Open arms (s)" fill="#22c55e" />
+          <Bar dataKey="closed" name="Closed arms (s)" fill="#ef4444" />
+        </BarChart>
+      );
+    } else if (kind === "ymaze") {
+      return (
+        <BarChart data={data} margin={{ top: 8, right: 16, left: 30, bottom: 32 }}>
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis dataKey={xKey}>
+            <Label value={xLabel} offset={-10} position="insideBottom" />
+          </XAxis>
+          <YAxis label={{ value: "% Alternation", angle: -90, position: "center", dx: -15 }} domain={[0, 100]} />
+          <Tooltip />
+          <Legend verticalAlign="bottom" wrapperStyle={{ paddingTop: "16px" }} />
+          <Bar dataKey="alternationPct" name="Percent alternation" fill="#3b82f6" />
+        </BarChart>
+      );
+    } else if (kind === "mwm") {
+      return (
+        <BarChart data={data} margin={{ top: 8, right: 16, left: 30, bottom: 32 }}>
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis dataKey={xKey}>
+            <Label value={xLabel} offset={-10} position="insideBottom" />
+          </XAxis>
+          <YAxis label={{ value: "Seconds (Target quadrant)", angle: -90, position: "center", dx: -15 }} />
+          <Tooltip />
+          <Legend verticalAlign="bottom" wrapperStyle={{ paddingTop: "16px" }} />
+          <Bar dataKey="targetTime" name={`Time in ${targetQuadrant}`} fill="#0ea5e9" />
+        </BarChart>
+      );
+    }
+    return null;
+  };
 
   if (loading) {
     return (
@@ -489,7 +487,7 @@ export default function TestDetail() {
                 )}
               </div>
 
-              {/* === Visualization Tabs === */}
+              {/* Visualization Tabs */}
               <div style={{ marginTop: 8 }}>
                 <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
                   <button
@@ -503,8 +501,6 @@ export default function TestDetail() {
                   <button
                     className={`btn ${vizTab === "group" ? "btn-primary" : ""}`}
                     onClick={() => setVizTab("group")}
-                    disabled
-                    title="Coming soon"
                   >
                     Per Group
                   </button>
@@ -515,63 +511,94 @@ export default function TestDetail() {
                     Per Test
                   </button>
                 </div>
+
                 <h4 style={{ margin: "8px 0" }}>
                   {vizTab === "test" ? "Visualization (Per Test)" :
                     vizTab === "group" ? "Visualization (Per Group)" :
                       "Visualization (Per Mouse)"}
                 </h4>
-                {vizTab !== "test" ? (
-                  <div className="muted">This tab will be available soon.</div>
-                ) : vizData.kind === "none" ? (
-                  <div className="muted">No analysis data to visualize.</div>
-                ) : (
-                  <div style={{ width: "100%", height: 360 }}>
-                    <ResponsiveContainer>
-                      {vizData.kind === "epm" ? (
-                        <BarChart data={vizData.data} margin={{ top: 8, right: 16, left: 30, bottom: 32 }}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="group" >
-                            <Label value="Group" offset={-10} position="insideBottom" />
-                          </XAxis>
-                          <YAxis label={{ value: "Seconds", angle: -90, position: "center", dx: -15 }} />
-                          <Tooltip />
-                          <Legend verticalAlign="bottom" wrapperStyle={{ paddingTop: "16px" }} />
-                          {/* สี: เปิด=เขียว ปิด=แดง */}
-                          <Bar dataKey="open" name="Open arms (s)" fill="#22c55e" />
-                          <Bar dataKey="closed" name="Closed arms (s)" fill="#ef4444" />
-                        </BarChart>
-                      ) : vizData.kind === "ymaze" ? (
-                        <BarChart data={vizData.data} margin={{ top: 8, right: 16, left: 30, bottom: 32 }}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="group" >
-                            <Label value="Group" offset={-10} position="insideBottom" />
-                          </XAxis>
-                          <YAxis label={{ value: "% Alternation", angle: -90, position: "center", dx: -15 }} domain={[0, 100]} />
-                          <Tooltip />
-                          <Legend verticalAlign="bottom" wrapperStyle={{ paddingTop: "16px" }} />
-                          <Bar dataKey="alternationPct" name="Percent alternation" fill="#3b82f6" />
-                        </BarChart>
-                      ) : (
-                        <BarChart data={vizData.data} margin={{ top: 8, right: 16, left: 30, bottom: 32 }}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="group" >
-                            <Label value="Group" offset={-10} position="insideBottom" />
-                          </XAxis>
-                          <YAxis label={{ value: "Seconds (Target quadrant)", angle: -90, position: "center", dx: -15 }} />
-                          <Tooltip />
-                          <Legend verticalAlign="bottom" wrapperStyle={{ paddingTop: "16px" }} />
-                          <Bar dataKey="targetTime" name={`Time in ${targetQuadrant}`} fill="#0ea5e9" />
-                        </BarChart>
-                      )}
-                    </ResponsiveContainer>
-                  </div>
-                )}
-                {/* <div className="muted" style={{ marginTop: 6 }}>
-                  * เฉลี่ยต่อกลุ่มจากหนูที่มี <code>analysisResults</code>; หากคีย์ไม่ตรง ลองดู extractor ในไฟล์นี้ (ส่วน <code>extractEPM</code>/<code>extractYmaze</code>/<code>extractMWM</code>) แล้วปรับชื่อฟิลด์ให้ตรงสคีมาแบ็กเอนด์
-                </div> */}
-              </div>
 
-              {/* (ส่วน Group tabs / Mouse selector / Video preview ถูกคอมเมนต์ไว้เหมือนเดิม) */}
+                {/* Per Mouse - Coming Soon */}
+                {vizTab === "mouse" && (
+                  <div className="muted">This tab will be available soon.</div>
+                )}
+
+                {/* Per Group */}
+                {vizTab === "group" && (
+                  <>
+                    {vizData.kind === "none" ? (
+                      <div className="muted">No analysis data to visualize.</div>
+                    ) : (
+                      <>
+                        <div style={{ marginBottom: 16 }}>
+                          <label style={{ display: "block", marginBottom: 4, fontWeight: 500 }}>
+                            Select Group:
+                          </label>
+                          <select
+                            value={selectedGroupForViz}
+                            onChange={(e) => setSelectedGroupForViz(e.target.value)}
+                            style={{
+                              padding: "8px 12px",
+                              borderRadius: 4,
+                              border: "1px solid var(--border)",
+                              minWidth: 200
+                            }}
+                          >
+                            <option value="ALL">All Groups</option>
+                            {vizDataPerGroup.map((g) => (
+                              <option key={g.group} value={g.group}>
+                                {g.group}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {selectedGroupForViz === "ALL" ? (
+                          <div style={{ display: "grid", gap: 24 }}>
+                            {vizDataPerGroup.map((groupData) => (
+                              <div key={groupData.group} style={{ width: "100%", height: 360 }}>
+                                <h5 style={{ margin: "0 0 8px 0" }}>{groupData.group}</h5>
+                                <ResponsiveContainer>
+                                  {renderChart(groupData.data, groupData.kind, "mouse", "Mouse")}
+                                </ResponsiveContainer>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <>
+                            {(() => {
+                              const groupData = vizDataPerGroup.find(g => g.group === selectedGroupForViz);
+                              if (!groupData) return <div className="muted">No data for selected group.</div>;
+                              return (
+                                <div style={{ width: "100%", height: 360 }}>
+                                  <ResponsiveContainer>
+                                    {renderChart(groupData.data, groupData.kind, "mouse", "Mouse")}
+                                  </ResponsiveContainer>
+                                </div>
+                              );
+                            })()}
+                          </>
+                        )}
+                      </>
+                    )}
+                  </>
+                )}
+
+                {/* Per Test */}
+                {vizTab === "test" && (
+                  <>
+                    {vizData.kind === "none" ? (
+                      <div className="muted">No analysis data to visualize.</div>
+                    ) : (
+                      <div style={{ width: "100%", height: 360 }}>
+                        <ResponsiveContainer>
+                          {renderChart(vizData.data, vizData.kind, "group", "Group")}
+                        </ResponsiveContainer>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
             </>
           )}
         </div>
