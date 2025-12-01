@@ -44,7 +44,7 @@ class RatBodyTracker:
             log.error(f"[tracker] model not found: {model_path}")
             return
 
-        self.device = (device or self._auto_device())  # "cuda" or "cpu"
+        self.device = (device or self._auto_device())
         self.half = False  # บังคับไม่ใช้ half เพื่อกัน dtype mismatch
 
         try:
@@ -52,7 +52,6 @@ class RatBodyTracker:
             # ย้ายขึ้นอุปกรณ์และบังคับ float32 เสมอ
             self.model.to(self.device)
             try:
-                # .model คือตัว nn.Module ภายใน ultralytics; บังคับ float32
                 self.model.model.float()
             except Exception:
                 pass
@@ -74,7 +73,7 @@ class RatBodyTracker:
                 self.model_ok = True
                 log.info("[tracker] YOLO loaded on cpu (half=False, dtype=float32) after fallback")
             except Exception:
-                self.model_ok = False   # ถ้ายังพังอยู่ให้ mark ใช้ YOLO ไม่ได้
+                self.model_ok = False
 
     def _auto_device(self) -> str:
         try:
@@ -127,7 +126,6 @@ class RatBodyTracker:
 
         if self.model_ok:
             try:
-                # note: Ultralytics จะใช้ dtype ของโมเดล → ตอนนี้เป็น float32 เสมอ
                 r = self.model.track(
                     source=frame,
                     conf=self.conf,

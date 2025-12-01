@@ -98,6 +98,47 @@ export async function registerUploadedVideo(req, res) {
   }
 }
 
+function extractTrajectory(metricsRaw = {}) {
+  const meta =
+    metricsRaw.trajectory_metadata ||
+    metricsRaw.trajectoryMeta ||
+    {};
+
+  const rawTraj = Array.isArray(meta.trajectory)
+    ? meta.trajectory
+    : Array.isArray(metricsRaw.trajectory)
+      ? metricsRaw.trajectory
+      : [];
+
+  let trajectory;
+  if (rawTraj.length) {
+    trajectory = rawTraj.map((p, idx) => ({
+      t: Number(p.t ?? p.time ?? idx),
+      x: Number(p.x ?? p.cx ?? 0),
+      y: Number(p.y ?? p.cy ?? 0),
+      region: String(p.region ?? p.zone ?? p.arm ?? ""),
+    }));
+  }
+
+  const vd = meta.videoDimensions || metricsRaw.videoDimensions || {};
+  const videoDimensions =
+    vd && (vd.width || vd.height)
+      ? {
+        width: Number(vd.width || 0),
+        height: Number(vd.height || 0),
+      }
+      : undefined;
+
+  const trajectoryMetadata = {
+    sampleInterval: Number(meta.sampleInterval ?? meta.sample_interval ?? 0),
+    totalPoints: rawTraj.length,
+    duration: Number(meta.duration ?? meta.duration_sec ?? 0),
+  };
+
+  return { trajectory, videoDimensions, trajectoryMetadata };
+}
+
+
 // อัปโหลดวิดีโอเดี่ยว
 export const uploadVideo = async (req, res) => {
   try {
@@ -463,6 +504,7 @@ export const internalReport = async (req, res) => {
     if (metricsObj && Object.keys(metricsObj).length) {
       patch.analysisResults = metricsObj;
     }
+    const { trajectory, videoDimensions, trajectoryMetadata } = extractTrajectory(metricsObj || {});
 
     console.log("internalReport.metrics keys:", Object.keys(metricsObj || {}));
     await Video.updateOne({ _id: id }, { $set: patch });
@@ -540,6 +582,9 @@ export const internalReport = async (req, res) => {
               ownerEmail: vdoc.ownerEmail,
               mouseCode: vdoc.mouseCode,
               [mz]: metricPayload,
+              ...(trajectory ? { trajectory } : {}),
+              ...(videoDimensions ? { videoDimensions } : {}),
+              ...(trajectoryMetadata.totalPoints > 0 ? { trajectoryMetadata } : {}),
               updatedAt: new Date(),
             },
             $setOnInsert: { createdAt: new Date(), mazeType: mz },
@@ -716,3 +761,47 @@ export const internalReport = async (req, res) => {
     return res.status(500).json({ ok: false, message: e.message });
   }
 };
+
+export const getTrajectoryByVideo = async (req, res) => {
+  try {
+    const videoId = req.params.videoId || req.params.id;
+    const ownerUid = req.user.ownerUid || req.user.uid;
+
+    // Find Result document that matches this video
+    const result = await Result.findOne({
+      video: videoId,
+      ownerUid
+    })
+      .select('mouseCode trajectory videoDimensions trajectoryMetadata mazeType')
+      .lean();
+
+    if (!result) {
+      return res.status(404).json({
+        success: false,
+        message: "Result not found"
+      });
+    }
+
+    if (!result.trajectory || !result.trajectory.length) {
+      return res.status(404).json({
+        success: false,
+        message: "Trajectory data not available"
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        mouseCode: result.mouseCode,
+        mazeType: result.mazeType,
+        trajectory: result.trajectory,
+        videoDimensions: result.videoDimensions,
+        metadata: result.trajectoryMetadata
+      }
+    });
+  } catch (error) {
+    console.error("Error fetching trajectory:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+

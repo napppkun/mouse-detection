@@ -8,6 +8,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend,
   CartesianGrid, ResponsiveContainer, Label
 } from "recharts";
+import TrajectoryCanvas from "../components/TrajectoryCanvas.jsx";
 
 const BACKEND_URL = window._env_?.BACKEND_URL || process.env.BACKEND_URL || "http://localhost:5000";
 const API_BASE = `${BACKEND_URL}/api/tests`;
@@ -29,6 +30,7 @@ export default function TestDetail() {
   // Visualization states
   const [vizTab, setVizTab] = useState("test"); // 'mouse' | 'group' | 'test'
   const [selectedGroupForViz, setSelectedGroupForViz] = useState("ALL");
+  const [selectedMouseForViz, setSelectedMouseForViz] = useState("ALL");
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
@@ -326,7 +328,7 @@ export default function TestDetail() {
   // Per Group: individual mice per group
   const vizDataPerGroup = useMemo(() => {
     if (!vizData.rawRows || vizData.kind === "none") return [];
-    
+
     const rowsByGroup = new Map();
     for (const row of vizData.rawRows) {
       if (!rowsByGroup.has(row.group)) rowsByGroup.set(row.group, []);
@@ -493,8 +495,6 @@ export default function TestDetail() {
                   <button
                     className={`btn ${vizTab === "mouse" ? "btn-primary" : ""}`}
                     onClick={() => setVizTab("mouse")}
-                    disabled
-                    title="Coming soon"
                   >
                     Per Mouse
                   </button>
@@ -518,9 +518,96 @@ export default function TestDetail() {
                       "Visualization (Per Mouse)"}
                 </h4>
 
-                {/* Per Mouse - Coming Soon */}
+                {/* Per Mouse Tab */}
                 {vizTab === "mouse" && (
-                  <div className="muted">This tab will be available soon.</div>
+                  <>
+                    {vizData.kind === "none" || processedItems.length === 0 ? (
+                      <div className="muted">No analysis data to visualize.</div>
+                    ) : (
+                      <>
+                        <div style={{ marginBottom: 16 }}>
+                          <label style={{ display: "block", marginBottom: 4, fontWeight: 500 }}>
+                            Select Mouse:
+                          </label>
+                          <select
+                            value={selectedMouseForViz}
+                            onChange={(e) => setSelectedMouseForViz(e.target.value)}
+                            style={{
+                              padding: "8px 12px",
+                              borderRadius: 4,
+                              border: "1px solid var(--border)",
+                              minWidth: 200
+                            }}
+                          >
+                            <option value="ALL">All Mice</option>
+                            {processedItems.map((item) => (
+                              <option key={item.id} value={item.mouseCode}>
+                                {item.mouseCode}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div
+                          style={{
+                            marginBottom: 16,
+                            fontSize: 12,
+                            backgroundColor: "#f8fafc",
+                            border: "1px solid var(--border)",
+                            borderRadius: 4,
+                            padding: "8px 12px",
+                            color: "#4b5563",
+                          }}
+                        >
+                          <div>
+                            <strong>S</strong> = Starting Point
+                            (Green Circle)
+                          </div>
+                          <div>
+                            <strong>E</strong> = Ending Point
+                            (Red Circle)
+                          </div>
+                          <div>
+                            The trajectory changes from{" "}
+                            <span style={{ fontWeight: 600, color: "#3b82f6" }}>blue</span>{" "}
+                            to{" "}
+                            <span style={{ fontWeight: 600, color: "#ef4444" }}>red</span>{" "}
+                            over time.
+                          </div>
+                        </div>
+
+                        {selectedMouseForViz === "ALL" ? (
+                          <div style={{ display: 'grid', gap: 24 }}>
+                            {processedItems.map((item) => (
+                              <div key={item.id} style={{ width: "100%", minHeight: 400 }}>
+                                <h5 style={{ margin: '0 0 8px 0' }}>{item.mouseCode}</h5>
+                                <TrajectoryCanvas
+                                  videoId={item.id}
+                                  token={idToken}
+                                  mazeType={test?.behaviorTest}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        ) : selectedMouseForViz ? (
+                          (() => {
+                            const selectedItem = processedItems.find(i => i.mouseCode === selectedMouseForViz);
+                            if (!selectedItem) return <div className="muted">Mouse not found</div>;
+
+                            return (
+                              <TrajectoryCanvas
+                                videoId={selectedItem.id}
+                                token={idToken}
+                                mazeType={test?.behaviorTest}
+                              />
+                            );
+                          })()
+                        ) : (
+                          <div className="muted">Please select a mouse</div>
+                        )}
+                      </>
+                    )}
+                  </>
                 )}
 
                 {/* Per Group */}

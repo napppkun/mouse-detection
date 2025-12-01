@@ -104,9 +104,12 @@ def process_video_analysis(
         "closed_arm_2": 0.0,
     }
 
+    trajectory = []
+    last_sample_time = 0.0
+    SAMPLE_INTERVAL = 1.0  # วินาที
+
     prev_region = None
     frame_idx = start_frame
-
     total_steps = max(1, end_frame - start_frame)
 
     while cap.get(cv2.CAP_PROP_POS_FRAMES) < end_frame:
@@ -114,7 +117,9 @@ def process_video_analysis(
         if not ret:
             break
 
-        # --- detect/track
+        current_time = (frame_idx - start_frame) * dt
+
+        # detect/track
         det = tracker.detect_frame(frame)
         centroid = None
         best = None
@@ -127,10 +132,27 @@ def process_video_analysis(
                 x1, y1, x2, y2 = best.get("bbox") or (0, 0, 0, 0)
                 centroid = ((x1 + x2) // 2, (y1 + y2) // 2)
 
-        # --- region/time logic
+        # region/time logic
         region = maze.get_region_for_position(centroid)
         if region:
             timers[region] = timers.get(region, 0.0) + dt
+
+        # เก็บ trajectory
+        should_sample = (
+            (current_time - last_sample_time >= SAMPLE_INTERVAL) or  # ทุก 1 วิ
+            (prev_region != region) or                                # เปลี่ยน region
+            (frame_idx == start_frame) or                            # จุดแรก
+            (cap.get(cv2.CAP_PROP_POS_FRAMES) >= end_frame - 1)      # จุดสุดท้าย
+        )
+        
+        if should_sample and centroid:
+            trajectory.append({
+                "t": round(current_time, 2),
+                "x": int(centroid[0]),
+                "y": int(centroid[1]),
+                "region": region or "unknown"
+            })
+            last_sample_time = current_time
 
         if maze_type == "ymaze":
             def is_arm(z): return z in ("A", "B", "C")
@@ -141,7 +163,7 @@ def process_video_analysis(
         if maze_type == "epm" and region in epm_raw_times:
             epm_raw_times[region] += dt
 
-        # --- draw overlay
+        # draw overlay
         if centroid is not None:
             cv2.circle(frame, centroid, 6, (0, 0, 255), -1)
         frame = maze.draw_maze(frame, active_region=region, timers=timers)
@@ -158,7 +180,20 @@ def process_video_analysis(
     cap.release()
     vw.release()
 
-    # --------- ทำสรุป & Excel ----------
+    # trajectory metadata
+    trajectory_metadata = {
+        "trajectory": trajectory,
+        "videoDimensions": {
+            "width": w,
+            "height": h
+        },
+        "sampleInterval": SAMPLE_INTERVAL,
+        "totalPoints": len(trajectory),
+        "duration": round((frame_idx - start_frame) / fps, 2)
+    }
+
+    # --------- Excel ----------
+    # EPM analysis
     if maze_type == "epm":
         open1 = epm_raw_times.get("open_arm_1", 0.0)
         open2 = epm_raw_times.get("open_arm_2", 0.0)
@@ -190,7 +225,8 @@ def process_video_analysis(
                 "avg_open_arm": round(avg_open, 2),
                 "avg_closed_arm": round(avg_closed, 2),
                 "absolute_diff": round(abs_diff, 2),
-            }
+            },
+            "trajectory_metadata": trajectory_metadata,
         }
 
         return {
@@ -202,7 +238,8 @@ def process_video_analysis(
             "duration_processed": (frame_idx - start_frame) / fps,
         }
 
-    elif maze_type == "ymaze":  # ymaze
+    # YMaze analysis
+    elif maze_type == "ymaze":
         # ----- สร้าง alternation แบบเลื่อนหน้าต่าง 3 รายการล่าสุด -----
         n = len(arm_sequence)
         alternation_results = [None] * n  # สองตำแหน่งแรกจะเป็น "" ตอน export
@@ -275,7 +312,8 @@ def process_video_analysis(
                 "sequence": sequence_rows,
                 "arm_sequence": arm_sequence,
                 "alternation_results": alternation_results,
-            }
+            },
+            "trajectory_metadata": trajectory_metadata,
         }
 
         return {
@@ -287,6 +325,7 @@ def process_video_analysis(
             "duration_processed": (frame_idx - start_frame) / fps,
         }
     
+    # MWM analysis
     elif maze_type == "mwm":
         # เก็บเวลาสี่ควอดแรนต์
         Qs = ["Q1", "Q2", "Q3", "Q4"]
@@ -317,7 +356,8 @@ def process_video_analysis(
                 "per_quadrant": q_times,
                 "target_quadrant": tquad,
                 "target_time": target_time,
-            }
+            },
+            "trajectory_metadata": trajectory_metadata,
         }
 
         return {

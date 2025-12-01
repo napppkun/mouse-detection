@@ -13,6 +13,7 @@ import {
   saveTrim,
   getVideoAnalysis,
   internalReport,
+  getTrajectoryByVideo,
 } from "../controllers/videoController.js";
 
 const router = express.Router();
@@ -78,6 +79,8 @@ router.get("/:id/analysis", verifyFirebase, getVideoAnalysis);
 router.post("/internal/report", internalReport);
 
 router.patch("/:id/trim", verifyFirebase, saveTrim);
+
+router.get("/:id/trajectory", verifyFirebase, getTrajectoryByVideo);
 
 // Error handler ของ multer
 router.use((err, req, res, next) => {

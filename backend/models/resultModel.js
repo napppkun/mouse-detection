@@ -24,9 +24,26 @@ const base = {
   ownerUid: { type: String, index: true, required: true },
   ownerEmail: { type: String, index: true, required: true },
 
-  // ช่วยทำรายงานง่ายและคงค่าถึงแม้ test จะถูกแก้ชื่อภายหลัง
   group: { type: mongoose.Schema.Types.ObjectId, ref: "Group" },
   groupName: { type: String }, // อัปเดตตอน upsert ผล
+
+  trajectory: [{
+    t: Number,      // timestamp in seconds
+    x: Number,      // pixel X coordinate
+    y: Number,      // pixel Y coordinate
+    region: String  // which region mouse is in
+  }],
+  
+  videoDimensions: {
+    width: Number,
+    height: Number
+  },
+  
+  trajectoryMetadata: {
+    sampleInterval: Number,    // seconds between samples
+    totalPoints: Number,       // number of trajectory points
+    duration: Number          // analyzed duration in seconds
+  }
 };
 
 const ResultSchema = new mongoose.Schema(base, {

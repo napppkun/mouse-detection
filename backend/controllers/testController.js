@@ -17,9 +17,7 @@ import {
 } from "../models/resultModel.js";
 import DailyRecord from "../models/dailyRecordModel.js";
 
-const ANALYSIS_API =
-  process.env.ANALYSIS_API ||
-  "http://localhost:8000";
+const ANALYSIS_API = process.env.ANALYSIS_API || "http://localhost:8000";
 
 let storage;
 try {
@@ -525,6 +523,27 @@ export const analyzerWebhook = async (req, res) => {
         "excelFile", "excel", "excel_url", "xlsx", "excel_file"
       ]);
 
+      const trajectoryMeta = metricsRaw?.trajectory_metadata || {};
+      const trajectory = Array.isArray(trajectoryMeta?.trajectory)
+        ? trajectoryMeta.trajectory.map(p => ({
+          t: Number(p.t ?? 0),
+          x: Number(p.x ?? 0),
+          y: Number(p.y ?? 0),
+          region: String(p.region ?? "")
+        }))
+        : undefined;
+
+      const videoDimensions = trajectoryMeta?.videoDimensions ? {
+        width: Number(trajectoryMeta.videoDimensions.width || 0),
+        height: Number(trajectoryMeta.videoDimensions.height || 0)
+      } : undefined;
+
+      const trajectoryMetadata = {
+        sampleInterval: Number(trajectoryMeta?.sampleInterval || 0),
+        totalPoints: Number(trajectoryMeta?.totalPoints || 0),
+        duration: Number(trajectoryMeta?.duration || 0)
+      };
+
       // ตีความชนิด maze จาก metrics หรือ fallback ไปที่ behaviorTest ของ Test
       const inferMazeFromMetrics = () =>
         metricsRaw?.epm ? "epm" :
@@ -575,6 +594,21 @@ export const analyzerWebhook = async (req, res) => {
         const groupId = rec?.group?._id || primaryFromTest?._id;
         const groupName = rec?.group?.name || primaryFromTest?.name;
 
+        // Base update object with trajectory
+        const baseUpdate = {
+          test: vdoc.test,
+          video: vidId,
+          ownerUid: vdoc.ownerUid,
+          ownerEmail: vdoc.ownerEmail,
+          mouseCode: vdoc.mouseCode,
+          group: groupId,
+          groupName: groupName,
+          updatedAt: new Date(),
+          ...(trajectory ? { trajectory } : {}),
+          ...(videoDimensions ? { videoDimensions } : {}),
+          ...(trajectoryMetadata.totalPoints > 0 ? { trajectoryMetadata } : {})
+        };
+
         // กระจาย metrics ลง collection ตามชนิด
         if (mazeKind === "epm") {
           const payload = metricsRaw?.epm || metricsRaw || {};
@@ -582,15 +616,8 @@ export const analyzerWebhook = async (req, res) => {
             { video: vidId },
             {
               $set: {
-                test: vdoc.test,
-                video: vidId,
-                ownerUid: vdoc.ownerUid,
-                ownerEmail: vdoc.ownerEmail,
-                mouseCode: vdoc.mouseCode,
+                ...baseUpdate,
                 epm: payload,
-                group: groupId,
-                groupName: groupName,
-                updatedAt: new Date(),
               },
               $setOnInsert: { createdAt: new Date(), mazeType: "epm" },
             },
@@ -606,22 +633,14 @@ export const analyzerWebhook = async (req, res) => {
             { video: vidId },
             {
               $set: {
-                test: vdoc.test,
-                video: vidId,
-                ownerUid: vdoc.ownerUid,
-                ownerEmail: vdoc.ownerEmail,
-                mouseCode: vdoc.mouseCode,
+                ...baseUpdate,
                 ymaze: payload,
-                group: groupId,
-                groupName: groupName,
-                updatedAt: new Date(),
               },
               $setOnInsert: { createdAt: new Date(), mazeType: "ymaze" },
             },
             { upsert: true }
           );
         } else {
-          // mwm
           const m = metricsRaw?.mwm || metricsRaw || {};
           const q = m.per_quadrant || m.quadrants || {};
           const getQ = (src, key) =>
@@ -649,15 +668,8 @@ export const analyzerWebhook = async (req, res) => {
             { video: vidId },
             {
               $set: {
-                test: vdoc.test,
-                video: vidId,
-                ownerUid: vdoc.ownerUid,
-                ownerEmail: vdoc.ownerEmail,
-                mouseCode: vdoc.mouseCode,
+                ...baseUpdate,
                 mwm: payload,
-                group: groupId,
-                groupName: groupName,
-                updatedAt: new Date(),
               },
               $setOnInsert: { createdAt: new Date(), mazeType: "mwm" },
             },
@@ -665,7 +677,6 @@ export const analyzerWebhook = async (req, res) => {
           );
         }
       } else {
-        // ลง failed เฉพาะกรณีได้รับสถานะล้มเหลวชัดเจน
         const isExplicitFail = st === "failed" || st === "error";
         if (isExplicitFail && (!vdoc || (vdoc.status !== "processed" && (incomingRun >= currentRun)))) {
           console.warn("[analyzerWebhook] marking FAILED", {
@@ -676,13 +687,12 @@ export const analyzerWebhook = async (req, res) => {
             { $set: { status: "failed", runId: incomingRun || currentRun || Date.now() } }
           );
         } else {
-          // payload ยังไม่ครบ → ข้ามไป ไม่เปลี่ยนสถานะ
           console.warn("[analyzerWebhook] skip marking failed for", vidId, "st=", st, "hasVideo:", hasVideo, "hasExcel:", hasExcel);
         }
       }
     }
 
-    // ─── สรุปสถานะ Test (อนุญาต completed_with_errors) ───
+    // สรุปสถานะ Test (อนุญาต completed_with_errors) 
     const allVids = await Video.find({ test: testId }).select("status");
     const counts = allVids.reduce((a, v) => {
       a[v.status] = (a[v.status] || 0) + 1;
@@ -697,10 +707,7 @@ export const analyzerWebhook = async (req, res) => {
     if (anyProcessing) {
       status = "processing";
     } else if (anyProcessed && anyFailed) {
-      // เลือกได้ 2 แนวทาง:
-      // 1) completed (แล้วเก็บ flag ไว้ว่า partial)
-      // 2) partial (เพิ่มสถานะใหม่)
-      status = "completed"; // หรือ "partial"
+      status = "completed";
     } else if (anyFailed && !anyProcessed) {
       status = "failed";
     } else {
@@ -712,9 +719,9 @@ export const analyzerWebhook = async (req, res) => {
       {
         $set: {
           status,
-          processingCompletedAt: ["completed", "failed", "partial"].includes(status) ? new Date() : undefined,
+          processingCompletedAt: ["completed", "failed"].includes(status) ? new Date() : undefined,
           processingError: undefined,
-          ...(anyProcessed && anyFailed ? { hasPartialFailures: true } : {}), // flag สำหรับ UI
+          ...(anyProcessed && anyFailed ? { hasPartialFailures: true } : {}),
         },
         ...(status === "processing" ? { $unset: { processingCompletedAt: 1 } } : {}),
       }
