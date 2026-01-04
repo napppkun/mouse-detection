@@ -12,6 +12,7 @@ const BACKEND_URL =
   "http://localhost:5000";
 
 const API_BASE = `${BACKEND_URL}/api/tests`;
+const LATEST_LIMIT = 5;
 
 function prettyBehavior(behaviorTest) {
   if (!behaviorTest) return "-";
@@ -53,7 +54,6 @@ export default function HomePage() {
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
       if (!u) {
-        // ถ้ายังไม่ได้ login ให้เด้งไปหน้า login
         navigate("/login", { replace: true, state: { from: "/" } });
         return;
       }
@@ -62,7 +62,6 @@ export default function HomePage() {
       fetchTests(tok);
     });
     return unsub;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function fetchTests(token) {
@@ -117,7 +116,7 @@ export default function HomePage() {
     return { total, ...byType };
   }, [tests]);
 
-  const latest = tests.slice(0, 10); // แสดง 10 รายการล่าสุด (ปรับได้)
+  const latest = useMemo(() => tests.slice(0, LATEST_LIMIT), [tests]);
 
   const handleRowClick = (id) => {
     if (!id) return;
@@ -151,86 +150,100 @@ export default function HomePage() {
   return (
     <div className="app-main">
       <div className="main-wrap" style={{ display: "grid", gap: 16 }}>
-        {/* Header */}
-        <div className="card" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-          <div>
-            <h3 style={{ margin: 0 }}>Dashboard</h3>
-            <div className="muted" style={{ marginTop: 4 }}>
-              Overview of your recent behavioral tests
-            </div>
+        {/* Dashboard Summary */}
+        <div className="card" style={{ display: "grid", gap: 12 }}>
+          <div style={{ textAlign: "center" }}>
+            <h3 style={{ margin: 0, fontSize: 22, fontWeight: 600 }}>Dashboard</h3>
           </div>
-        </div>
 
-        {/* Summary cards */}
-        <div
-          className="card"
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-            gap: 12,
-          }}
-        >
-          <div
-            style={{
-              padding: 12,
-              borderRadius: 6,
-              border: "1px solid var(--border)",
-              backgroundColor: "#0f172a",
-              color: "#e5e7eb",
-            }}
-          >
-            <div className="muted" style={{ color: "#9ca3af", fontSize: 12 }}>
+          <div style={{ display: "grid", gap: 10 }}>
+            {/* Total Tests */}
+            <div
+              style={{
+                padding: "14px 16px",
+                borderRadius: 6,
+                border: "1px solid var(--border)",
+                backgroundColor: "#0f172a",
+                color: "#e5e7eb",
+                textAlign: "center",
+                fontWeight: 700,
+                fontSize: 18,
+              }}
+            >
               Total Tests
+              <div>
+                {dashboard.total}
+              </div>
             </div>
-            <div style={{ fontSize: 24, fontWeight: 600 }}>{dashboard.total}</div>
-          </div>
 
-          <div
-            style={{
-              padding: 12,
-              borderRadius: 6,
-              border: "1px solid var(--border)",
-              backgroundColor: "#f0fdf4",
-            }}
-          >
-            <div className="muted" style={{ fontSize: 12 }}>
+            {/* EPM */}
+            <div
+              style={{
+                padding: "14px 16px",
+                borderRadius: 6,
+                border: "1px solid var(--border)",
+                backgroundColor: "#f0fdf4",
+                textAlign: "center",
+                fontWeight: 700,
+                fontSize: 18,
+                color: "#166534",
+              }}
+            >
               EPM
+              <div>
+                {dashboard.epm}
+              </div>
             </div>
-            <div style={{ fontSize: 20, fontWeight: 600 }}>{dashboard.epm}</div>
-          </div>
 
-          <div
-            style={{
-              padding: 12,
-              borderRadius: 6,
-              border: "1px solid var(--border)",
-              backgroundColor: "#eff6ff",
-            }}
-          >
-            <div className="muted" style={{ fontSize: 12 }}>
+            {/* Y-Maze */}
+            <div
+              style={{
+                padding: "14px 16px",
+                borderRadius: 6,
+                border: "1px solid var(--border)",
+                backgroundColor: "#eff6ff",
+                textAlign: "center",
+                fontWeight: 700,
+                fontSize: 18,
+                color: "#1d4ed8",
+              }}
+            >
               Y-Maze
+              <div>
+                {dashboard.ymaze}
+              </div>
             </div>
-            <div style={{ fontSize: 20, fontWeight: 600 }}>{dashboard.ymaze}</div>
-          </div>
 
-          <div
-            style={{
-              padding: 12,
-              borderRadius: 6,
-              border: "1px solid var(--border)",
-              backgroundColor: "#ecfeff",
-            }}
-          >
-            <div className="muted" style={{ fontSize: 12 }}>
+            {/* MWM */}
+            <div
+              style={{
+                padding: "14px 16px",
+                borderRadius: 6,
+                border: "1px solid var(--border)",
+                backgroundColor: "#ecfeff",
+                textAlign: "center",
+                fontWeight: 700,
+                fontSize: 18,
+                color: "#0369a1",
+              }}
+            >
               MWM
+              <div>
+                {dashboard.mwm}
+              </div>
             </div>
-            <div style={{ fontSize: 20, fontWeight: 600 }}>{dashboard.mwm}</div>
           </div>
         </div>
 
         {/* Latest tests list */}
         <div className="card" style={{ display: "grid", gap: 12 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
             <h4 style={{ margin: 0 }}>Recent Tests</h4>
             <div className="muted" style={{ fontSize: 12 }}>
               Showing {latest.length} of {tests.length}
@@ -238,7 +251,9 @@ export default function HomePage() {
           </div>
 
           {latest.length === 0 ? (
-            <div className="muted">No tests found. Create a new test to get started.</div>
+            <div className="muted">
+              No tests found. Create a new test to get started.
+            </div>
           ) : (
             <div
               style={{
@@ -247,14 +262,55 @@ export default function HomePage() {
                 overflow: "hidden",
               }}
             >
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                  fontSize: 14,
+                }}
+              >
                 <thead style={{ backgroundColor: "#f9fafb" }}>
                   <tr>
-                    <th style={{ textAlign: "left", padding: "8px 12px" }}>Name</th>
-                    <th style={{ textAlign: "left", padding: "8px 12px" }}>Type</th>
-                    <th style={{ textAlign: "left", padding: "8px 12px" }}>Status</th>
-                    <th style={{ textAlign: "left", padding: "8px 12px" }}>Created</th>
-                    <th style={{ textAlign: "right", padding: "8px 12px" }}>Actions</th>
+                    <th
+                      style={{
+                        textAlign: "left",
+                        padding: "8px 12px",
+                      }}
+                    >
+                      Name
+                    </th>
+                    <th
+                      style={{
+                        textAlign: "left",
+                        padding: "8px 12px",
+                      }}
+                    >
+                      Behavioral Test
+                    </th>
+                    <th
+                      style={{
+                        textAlign: "left",
+                        padding: "8px 12px",
+                      }}
+                    >
+                      Status
+                    </th>
+                    <th
+                      style={{
+                        textAlign: "left",
+                        padding: "8px 12px",
+                      }}
+                    >
+                      Created
+                    </th>
+                    <th
+                      style={{
+                        textAlign: "right",
+                        padding: "8px 12px",
+                      }}
+                    >
+                      Actions
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -267,14 +323,20 @@ export default function HomePage() {
                       }}
                       onClick={() => handleRowClick(t._id)}
                     >
-                      <td style={{ padding: "8px 12px", maxWidth: 260 }}>
-                        <div style={{ fontWeight: 500 }}>{t.name || "-"}</div>
-                        <div className="muted" style={{ fontSize: 12 }}>
-                          ID: {t._id}
+                      <td
+                        style={{
+                          padding: "8px 12px",
+                          maxWidth: 260,
+                        }}
+                      >
+                        <div style={{ fontWeight: 500 }}>
+                          {t.name || "-"}
                         </div>
                       </td>
                       <td style={{ padding: "8px 12px" }}>
-                        <span className="muted">{prettyBehavior(t.behaviorTest)}</span>
+                        <span className="muted">
+                          {prettyBehavior(t.behaviorTest)}
+                        </span>
                       </td>
                       <td style={{ padding: "8px 12px" }}>
                         <span
@@ -298,9 +360,16 @@ export default function HomePage() {
                         </span>
                       </td>
                       <td style={{ padding: "8px 12px" }}>
-                        <span className="muted">{formatDate(t.createdAt || t.date)}</span>
+                        <span className="muted">
+                          {formatDate(t.createdAt || t.date)}
+                        </span>
                       </td>
-                      <td style={{ padding: "8px 12px", textAlign: "right" }}>
+                      <td
+                        style={{
+                          padding: "8px 12px",
+                          textAlign: "right",
+                        }}
+                      >
                         <button
                           className="btn"
                           style={{ padding: "4px 10px", fontSize: 12 }}
