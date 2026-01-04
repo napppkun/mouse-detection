@@ -177,6 +177,24 @@ export default function TestDetail() {
   const behavior = String(test?.behaviorTest || "").toLowerCase();
   const targetQuadrant = String(test?.targetQuadrant || "Q1").toUpperCase();
 
+  const getRegionsForMouse = (mouseCode) => {
+    if (!mouseCode || !test?.boundingBoxes) return [];
+
+    let mapObj = null;
+    if (Array.isArray(test.boundingBoxes) && test.boundingBoxes.length > 0) {
+      mapObj = test.boundingBoxes[0];
+    } else if (!Array.isArray(test.boundingBoxes)) {
+      mapObj = test.boundingBoxes;
+    }
+
+    if (!mapObj || typeof mapObj !== 'object') return [];
+
+    const regions = mapObj[mouseCode];
+    if (!Array.isArray(regions)) return [];
+
+    return regions;
+  };
+
   const getGroupNameOfMouse = (mouseCode) => {
     if (!Array.isArray(test?.groupDetails)) return "Ungrouped";
     for (const g of test.groupDetails) {
@@ -578,27 +596,34 @@ export default function TestDetail() {
 
                         {selectedMouseForViz === "ALL" ? (
                           <div style={{ display: 'grid', gap: 24 }}>
-                            {processedItems.map((item) => (
-                              <div key={item.id} style={{ width: "100%", minHeight: 400 }}>
-                                <h5 style={{ margin: '0 0 8px 0' }}>{item.mouseCode}</h5>
-                                <TrajectoryCanvas
-                                  videoId={item.id}
-                                  token={idToken}
-                                  mazeType={test?.behaviorTest}
-                                />
-                              </div>
-                            ))}
+                            {processedItems.map((item) => {
+                              const regionsForMouse = getRegionsForMouse(item.mouseCode);
+                              return (
+                                <div key={item.id} style={{ width: "100%", minHeight: 400 }}>
+                                  <h5 style={{ margin: '0 0 8px 0' }}>{item.mouseCode}</h5>
+                                  <TrajectoryCanvas
+                                    videoId={item.id}
+                                    token={idToken}
+                                    mazeType={test?.behaviorTest}
+                                    regions={regionsForMouse}
+                                  />
+                                </div>
+                              );
+                            })}
                           </div>
                         ) : selectedMouseForViz ? (
                           (() => {
                             const selectedItem = processedItems.find(i => i.mouseCode === selectedMouseForViz);
                             if (!selectedItem) return <div className="muted">Mouse not found</div>;
 
+                            const regionsForMouse = getRegionsForMouse(selectedItem.mouseCode);
+
                             return (
                               <TrajectoryCanvas
                                 videoId={selectedItem.id}
                                 token={idToken}
                                 mazeType={test?.behaviorTest}
+                                regions={regionsForMouse}
                               />
                             );
                           })()

@@ -8,24 +8,24 @@ const BACKEND_URL = window._env_?.BACKEND_URL || process.env.REACT_APP_BACKEND_U
 function drawArenaOutline(ctx, videoW, videoH, scale, offsetX, offsetY, mazeType) {
   ctx.strokeStyle = '#999';
   ctx.lineWidth = 2;
-  
+
   const w = videoW * scale;
   const h = videoH * scale;
-  
+
   // Draw outer rectangle
   ctx.strokeRect(offsetX, offsetY, w, h);
-  
+
   // For MWM, draw circle and quadrant lines
   if (mazeType?.toLowerCase().includes('morris') || mazeType?.toLowerCase().includes('mwm')) {
     const cx = offsetX + w / 2;
     const cy = offsetY + h / 2;
     const r = Math.min(w, h) / 2 * 0.8;
-    
+
     ctx.strokeStyle = '#666';
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
     ctx.stroke();
-    
+
     // Quadrant lines
     ctx.strokeStyle = '#ccc';
     ctx.lineWidth = 1;
@@ -35,7 +35,7 @@ function drawArenaOutline(ctx, videoW, videoH, scale, offsetX, offsetY, mazeType
     ctx.moveTo(cx, cy - r);
     ctx.lineTo(cx, cy + r);
     ctx.stroke();
-    
+
     // Labels
     ctx.fillStyle = '#888';
     ctx.font = '14px sans-serif';
@@ -49,29 +49,29 @@ function drawArenaOutline(ctx, videoW, videoH, scale, offsetX, offsetY, mazeType
 
 function drawTrajectoryPath(ctx, trajectory, scale, offsetX, offsetY) {
   if (!trajectory || trajectory.length < 2) return;
-  
+
   // Draw path with gradient color from blue (start) to red (end)
   ctx.lineWidth = 2.5;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
-  
+
   for (let i = 0; i < trajectory.length - 1; i++) {
     const p1 = trajectory[i];
     const p2 = trajectory[i + 1];
-    
+
     // Color gradient: blue → red
     const progress = i / (trajectory.length - 1);
     const r = Math.floor(59 + progress * (239 - 59));   // 59 → 239
-    const g = Math.floor(130 - progress * 130);           // 130 → 0
-    const b = Math.floor(246 - progress * (246 - 68));   // 246 → 68
-    
+    const g = Math.floor(130 - progress * 130);         // 130 → 0
+    const b = Math.floor(246 - progress * (246 - 68));  // 246 → 68
+
     ctx.strokeStyle = `rgb(${r},${g},${b})`;
     ctx.beginPath();
     ctx.moveTo(offsetX + p1.x * scale, offsetY + p1.y * scale);
     ctx.lineTo(offsetX + p2.x * scale, offsetY + p2.y * scale);
     ctx.stroke();
   }
-  
+
   // Start point (green circle)
   const start = trajectory[0];
   ctx.fillStyle = '#22c55e';
@@ -82,7 +82,7 @@ function drawTrajectoryPath(ctx, trajectory, scale, offsetX, offsetY) {
     6, 0, Math.PI * 2
   );
   ctx.fill();
-  
+
   // End point (red circle)
   const end = trajectory[trajectory.length - 1];
   ctx.fillStyle = '#ef4444';
@@ -93,7 +93,7 @@ function drawTrajectoryPath(ctx, trajectory, scale, offsetX, offsetY) {
     6, 0, Math.PI * 2
   );
   ctx.fill();
-  
+
   // Add labels
   ctx.fillStyle = '#fff';
   ctx.font = 'bold 10px sans-serif';
@@ -105,10 +105,10 @@ function drawTrajectoryPath(ctx, trajectory, scale, offsetX, offsetY) {
 
 function drawHeatmap(ctx, trajectory, videoW, videoH, scale, offsetX, offsetY) {
   if (!trajectory || !trajectory.length) return;
-  
+
   const GRID_SIZE = 40;
   const grid = Array(GRID_SIZE).fill(0).map(() => Array(GRID_SIZE).fill(0));
-  
+
   // Count visits per cell
   for (const p of trajectory) {
     const gx = Math.floor((p.x / videoW) * GRID_SIZE);
@@ -117,11 +117,11 @@ function drawHeatmap(ctx, trajectory, videoW, videoH, scale, offsetX, offsetY) {
       grid[gy][gx]++;
     }
   }
-  
+
   const maxCount = Math.max(...grid.flat(), 1);
   const cellW = (videoW * scale) / GRID_SIZE;
   const cellH = (videoH * scale) / GRID_SIZE;
-  
+
   for (let y = 0; y < GRID_SIZE; y++) {
     for (let x = 0; x < GRID_SIZE; x++) {
       const count = grid[y][x];
@@ -139,13 +139,73 @@ function drawHeatmap(ctx, trajectory, videoW, videoH, scale, offsetX, offsetY) {
   }
 }
 
-export default function TrajectoryCanvas({ videoId, token, mazeType }) {
+// label for different types of bounding box
+function prettyRegionLabel(type) {
+  if (!type) return '';
+  const map = {
+    open_arm_1: 'Open arm 1',
+    open_arm_2: 'Open arm 2',
+    closed_arm_1: 'Closed arm 1',
+    closed_arm_2: 'Closed arm 2',
+  };
+  if (map[type]) return map[type];
+  return type;
+}
+
+// Draw ROI
+function drawUserRegions(ctx, regions, scale, offsetX, offsetY) {
+  if (!regions || !regions.length) return;
+
+  ctx.save();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#0f172a';
+  ctx.fillStyle = '#0f172a';
+  ctx.font = '12px sans-serif';
+  ctx.textAlign = 'center';
+
+  regions.forEach((region) => {
+    const { x, y, width, height, rotation = 0, type } = region;
+    if (
+      typeof x !== 'number' ||
+      typeof y !== 'number' ||
+      typeof width !== 'number' ||
+      typeof height !== 'number'
+    ) {
+      return;
+    }
+
+    const scaledX = offsetX + x * scale;
+    const scaledY = offsetY + y * scale;
+    const scaledW = width * scale;
+    const scaledH = height * scale;
+
+    const cx = scaledX + scaledW / 2;
+    const cy = scaledY + scaledH / 2;
+    const rad = (rotation * Math.PI) / 180;
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    if (rotation) ctx.rotate(rad);
+    ctx.strokeRect(-scaledW / 2, -scaledH / 2, scaledW, scaledH);
+    ctx.restore();
+
+    // label above ROI
+    const label = prettyRegionLabel(type);
+    if (label) {
+      ctx.fillText(label, cx, cy - scaledH / 2 - 6);
+    }
+  });
+
+  ctx.restore();
+}
+
+export default function TrajectoryCanvas({ videoId, token, mazeType, regions = [] }) {
   const canvasRef = useRef(null);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showHeatmap, setShowHeatmap] = useState(false);
-  
+
   useEffect(() => {
     async function fetchTrajectory() {
       try {
@@ -153,7 +213,7 @@ export default function TrajectoryCanvas({ videoId, token, mazeType }) {
         setError("");
         const res = await fetch(
           `${BACKEND_URL}/api/videos/${videoId}/trajectory`,
-          { headers: { Authorization: `Bearer ${token}` }}
+          { headers: { Authorization: `Bearer ${token}` } }
         );
         const json = await res.json();
         if (json.success) {
@@ -172,16 +232,16 @@ export default function TrajectoryCanvas({ videoId, token, mazeType }) {
       fetchTrajectory();
     }
   }, [videoId, token]);
-  
+
   useEffect(() => {
     if (!data || !canvasRef.current) return;
-    
+
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     const { trajectory, videoDimensions } = data;
-    
+
     if (!trajectory || !trajectory.length) return;
-    
+
     // Calculate scaling
     const videoW = videoDimensions?.width || 1920;
     const videoH = videoDimensions?.height || 1080;
@@ -190,23 +250,26 @@ export default function TrajectoryCanvas({ videoId, token, mazeType }) {
     const scale = Math.min(scaleX, scaleY);
     const offsetX = (canvas.width - videoW * scale) / 2;
     const offsetY = (canvas.height - videoH * scale) / 2;
-    
+
     // Clear canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
+
     // Draw background arena outline
     drawArenaOutline(ctx, videoW, videoH, scale, offsetX, offsetY, mazeType);
-    
-    // Draw heatmap (optional)
+
+    // Heatmap
     if (showHeatmap) {
       drawHeatmap(ctx, trajectory, videoW, videoH, scale, offsetX, offsetY);
     }
-    
+
+    // Draw user Regions
+    drawUserRegions(ctx, regions, scale, offsetX, offsetY);
+
     // Draw trajectory path
     drawTrajectoryPath(ctx, trajectory, scale, offsetX, offsetY);
-    
-  }, [data, showHeatmap, mazeType]);
-  
+
+  }, [data, showHeatmap, mazeType, regions]);
+
   if (loading) {
     return (
       <div style={{ padding: 24, textAlign: 'center' }}>
@@ -215,7 +278,7 @@ export default function TrajectoryCanvas({ videoId, token, mazeType }) {
       </div>
     );
   }
-  
+
   if (error) {
     return (
       <div style={{ padding: 24, textAlign: 'center', color: 'var(--danger)' }}>
@@ -223,30 +286,18 @@ export default function TrajectoryCanvas({ videoId, token, mazeType }) {
       </div>
     );
   }
-  
+
   if (!data) {
     return <div className="muted" style={{ padding: 24 }}>No trajectory data available</div>;
   }
-  
+
   return (
     <div style={{ display: 'grid', gap: 12 }}>
-
-      {/* <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-          <input 
-            type="checkbox" 
-            checked={showHeatmap}
-            onChange={(e) => setShowHeatmap(e.target.checked)}
-          />
-          Show Heatmap
-        </label>
-      </div> */}
-      
-      <canvas 
+      <canvas
         ref={canvasRef}
         width={800}
         height={600}
-        style={{ 
+        style={{
           border: '1px solid var(--border)',
           backgroundColor: '#fafafa',
           borderRadius: 4,
