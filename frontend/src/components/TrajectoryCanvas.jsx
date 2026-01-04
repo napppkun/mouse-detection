@@ -5,7 +5,7 @@ import React, { useEffect, useRef, useState } from 'react';
 const BACKEND_URL = window._env_?.BACKEND_URL || process.env.REACT_APP_BACKEND_URL || "http://localhost:5000";
 
 // ========== Helper Functions ==========
-function drawArenaOutline(ctx, videoW, videoH, scale, offsetX, offsetY, mazeType) {
+function drawArenaOutline(ctx, videoW, videoH, scale, offsetX, offsetY, mazeType, hasCustomEllipse = false) {
   ctx.strokeStyle = '#999';
   ctx.lineWidth = 2;
 
@@ -15,8 +15,10 @@ function drawArenaOutline(ctx, videoW, videoH, scale, offsetX, offsetY, mazeType
   // Draw outer rectangle
   ctx.strokeRect(offsetX, offsetY, w, h);
 
-  // For MWM, draw circle and quadrant lines
-  if (mazeType?.toLowerCase().includes('morris') || mazeType?.toLowerCase().includes('mwm')) {
+  const isMWM = mazeType?.toLowerCase().includes('morris') || mazeType?.toLowerCase().includes('mwm');
+
+  // No ellipse template then draw default circle 
+  if (isMWM && !hasCustomEllipse) {
     const cx = offsetX + w / 2;
     const cy = offsetY + h / 2;
     const r = Math.min(w, h) / 2 * 0.8;
@@ -45,6 +47,112 @@ function drawArenaOutline(ctx, videoW, videoH, scale, offsetX, offsetY, mazeType
     ctx.fillText('Q3', cx - r * 0.5, cy + r * 0.5);
     ctx.fillText('Q4', cx + r * 0.5, cy + r * 0.5);
   }
+}
+
+function drawEllipseRegion(ctx, ellipse, scale, offsetX, offsetY) {
+  if (!ellipse) return;
+  const { cx, cy, rx, ry, rotationDeg = 0 } = ellipse;
+
+  const scaledCx = offsetX + cx * scale;
+  const scaledCy = offsetY + cy * scale;
+  const scaledRx = rx * scale;
+  const scaledRy = ry * scale;
+  const rad = (rotationDeg * Math.PI) / 180;
+
+  ctx.save();
+  ctx.translate(scaledCx, scaledCy);
+  if (rotationDeg) ctx.rotate(rad);
+
+  ctx.strokeStyle = '#0f172a';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, scaledRx, scaledRy, 0, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+function drawMWMQuadrantLabels(ctx, ellipse, scale, offsetX, offsetY) {
+  if (!ellipse) return;
+  const { cx, cy, rx, ry, rotationDeg = 0 } = ellipse;
+
+  const baseCx = offsetX + cx * scale;
+  const baseCy = offsetY + cy * scale;
+  const baseRx = rx * scale;
+  const baseRy = ry * scale;
+  const rad = (rotationDeg * Math.PI) / 180;
+
+  // จุดวาง label บน local ellipse (ก่อนหมุน)
+  const quads = [
+    { label: "Q1", dx: baseRx * 0.6, dy: -baseRy * 0.6 },
+    { label: "Q2", dx: -baseRx * 0.6, dy: -baseRy * 0.6 },
+    { label: "Q3", dx: -baseRx * 0.6, dy: baseRy * 0.6 },
+    { label: "Q4", dx: baseRx * 0.6, dy: baseRy * 0.6 },
+  ];
+
+  ctx.save();
+  ctx.fillStyle = "#888";
+  ctx.font = "14px sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
+  quads.forEach(({ label, dx, dy }) => {
+    // apply rotation
+    const rxp = dx * Math.cos(rad) - dy * Math.sin(rad);
+    const ryp = dx * Math.sin(rad) + dy * Math.cos(rad);
+    ctx.fillText(label, baseCx + rxp, baseCy + ryp);
+  });
+
+  ctx.restore();
+}
+
+function drawMWMQuadrantLines(ctx, ellipse, scale, offsetX, offsetY) {
+  if (!ellipse) return;
+  const { cx, cy, rx, ry, rotationDeg = 0 } = ellipse;
+
+  // ศูนย์กลาง + รัศมี (scale แล้ว)
+  const baseCx = offsetX + cx * scale;
+  const baseCy = offsetY + cy * scale;
+  const baseRx = rx * scale;
+  const baseRy = ry * scale;
+  const rad = (rotationDeg * Math.PI) / 180;
+
+  // เส้นแกน x: (-rx, 0) → (rx, 0)
+  const h1 = { x: -baseRx, y: 0 };
+  const h2 = { x: baseRx, y: 0 };
+
+  // เส้นแกน y: (0, -ry) → (0, ry)
+  const v1 = { x: 0, y: -baseRy };
+  const v2 = { x: 0, y: baseRy };
+
+  // helper หมุนจุดรอบ origin
+  const rotate = (p) => ({
+    x: p.x * Math.cos(rad) - p.y * Math.sin(rad),
+    y: p.x * Math.sin(rad) + p.y * Math.cos(rad),
+  });
+
+  const rh1 = rotate(h1);
+  const rh2 = rotate(h2);
+  const rv1 = rotate(v1);
+  const rv2 = rotate(v2);
+
+  ctx.save();
+  ctx.strokeStyle = "#ccc";
+  ctx.lineWidth = 1;
+
+  // เส้นแนวนอน (ผ่านศูนย์กลาง)
+  ctx.beginPath();
+  ctx.moveTo(baseCx + rh1.x, baseCy + rh1.y);
+  ctx.lineTo(baseCx + rh2.x, baseCy + rh2.y);
+  ctx.stroke();
+
+  // เส้นแนวตั้ง (ผ่านศูนย์กลาง)
+  ctx.beginPath();
+  ctx.moveTo(baseCx + rv1.x, baseCy + rv1.y);
+  ctx.lineTo(baseCx + rv2.x, baseCy + rv2.y);
+  ctx.stroke();
+
+  ctx.restore();
 }
 
 function drawTrajectoryPath(ctx, trajectory, scale, offsetX, offsetY) {
@@ -199,7 +307,7 @@ function drawUserRegions(ctx, regions, scale, offsetX, offsetY) {
   ctx.restore();
 }
 
-export default function TrajectoryCanvas({ videoId, token, mazeType, regions = [] }) {
+export default function TrajectoryCanvas({ videoId, token, mazeType, regions = [], ellipse = null }) {
   const canvasRef = useRef(null);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -251,11 +359,27 @@ export default function TrajectoryCanvas({ videoId, token, mazeType, regions = [
     const offsetX = (canvas.width - videoW * scale) / 2;
     const offsetY = (canvas.height - videoH * scale) / 2;
 
+    const hasEllipse =
+      !!ellipse &&
+      typeof ellipse.cx === "number" &&
+      typeof ellipse.cy === "number";
+
     // Clear canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     // Draw background arena outline
-    drawArenaOutline(ctx, videoW, videoH, scale, offsetX, offsetY, mazeType);
+    drawArenaOutline(ctx, videoW, videoH, scale, offsetX, offsetY, mazeType, hasEllipse);
+
+    // Draw ellipse region and label
+    if (
+      (mazeType?.toLowerCase().includes("morris") ||
+        mazeType?.toLowerCase().includes("mwm")) &&
+      ellipse
+    ) {
+      drawEllipseRegion(ctx, ellipse, scale, offsetX, offsetY);
+      drawMWMQuadrantLines(ctx, ellipse, scale, offsetX, offsetY);
+      drawMWMQuadrantLabels(ctx, ellipse, scale, offsetX, offsetY);
+    }
 
     // Heatmap
     if (showHeatmap) {
@@ -268,7 +392,7 @@ export default function TrajectoryCanvas({ videoId, token, mazeType, regions = [
     // Draw trajectory path
     drawTrajectoryPath(ctx, trajectory, scale, offsetX, offsetY);
 
-  }, [data, showHeatmap, mazeType, regions]);
+  }, [data, showHeatmap, mazeType, regions, ellipse]);
 
   if (loading) {
     return (

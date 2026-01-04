@@ -177,6 +177,11 @@ export default function TestDetail() {
   const behavior = String(test?.behaviorTest || "").toLowerCase();
   const targetQuadrant = String(test?.targetQuadrant || "Q1").toUpperCase();
 
+  const getMWMEllipseForMouse = (mouseCode) => {
+    if (!mouseCode || !test?.mwmTemplateByMouse) return null;
+    return test.mwmTemplateByMouse[mouseCode] || null;
+  };
+
   const getRegionsForMouse = (mouseCode) => {
     if (!mouseCode || !test?.boundingBoxes) return [];
 
@@ -598,6 +603,9 @@ export default function TestDetail() {
                           <div style={{ display: 'grid', gap: 24 }}>
                             {processedItems.map((item) => {
                               const regionsForMouse = getRegionsForMouse(item.mouseCode);
+                              const ellipseForMouse = behavior.includes("morris") || behavior.includes("mwm")
+                                ? getMWMEllipseForMouse(item.mouseCode)
+                                : null;
                               return (
                                 <div key={item.id} style={{ width: "100%", minHeight: 400 }}>
                                   <h5 style={{ margin: '0 0 8px 0' }}>{item.mouseCode}</h5>
@@ -606,6 +614,7 @@ export default function TestDetail() {
                                     token={idToken}
                                     mazeType={test?.behaviorTest}
                                     regions={regionsForMouse}
+                                    ellipse={ellipseForMouse}
                                   />
                                 </div>
                               );
@@ -615,15 +624,17 @@ export default function TestDetail() {
                           (() => {
                             const selectedItem = processedItems.find(i => i.mouseCode === selectedMouseForViz);
                             if (!selectedItem) return <div className="muted">Mouse not found</div>;
-
                             const regionsForMouse = getRegionsForMouse(selectedItem.mouseCode);
-
+                            const ellipseForMouse = behavior.includes("morris") || behavior.includes("mwm")
+                              ? getMWMEllipseForMouse(selectedItem.mouseCode)
+                              : null;
                             return (
                               <TrajectoryCanvas
                                 videoId={selectedItem.id}
                                 token={idToken}
                                 mazeType={test?.behaviorTest}
                                 regions={regionsForMouse}
+                                ellipse={ellipseForMouse}
                               />
                             );
                           })()
