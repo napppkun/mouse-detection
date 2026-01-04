@@ -183,7 +183,7 @@ export const analyzeTest = async (req, res) => {
       perVideoTimesById = {},
       strict = "0",
       targetQuadrant, // MWM only
-      // NEW: circle/ellipse template keyed by mouseCode
+      // circle/ellipse template keyed by mouseCode
       mwmTemplateByMouse = {},
     } = req.body || {};
 
@@ -339,21 +339,26 @@ export const analyzeTest = async (req, res) => {
     }
 
     // 4) mark processing + save trims onto Video docs
+    const update = {
+      status: vidsToRun.length ? "processing" : test.status,
+      processingStartedAt: vidsToRun.length ? new Date() : test.processingStartedAt,
+      boundingBoxes: rectanglesByMouse || {},
+      settings: {
+        ...(test.settings || {}),
+        analysisStartTime: gStart,
+        analysisEndTime: gEnd,
+      },
+      processingError: undefined,
+    };
+
+    // ถ้าเป็น MWM ให้เซฟ template อีกชุดหนึ่ง
+    if (mazeShort === "mwm") {
+      update.mwmTemplateByMouse = mwmTemplateByMouse || {};
+    }
+
     await Test.updateOne(
       { _id: id, ownerUid },
-      {
-        $set: {
-          status: vidsToRun.length ? "processing" : test.status,
-          processingStartedAt: vidsToRun.length ? new Date() : test.processingStartedAt,
-          boundingBoxes: rectanglesByMouse || {},
-          settings: {
-            ...(test.settings || {}),
-            analysisStartTime: gStart,
-            analysisEndTime: gEnd,
-          },
-          processingError: undefined,
-        },
-      }
+      { $set: update }
     );
 
     const ops = items.map((i) => ({
@@ -784,7 +789,6 @@ export const getAllTests = async (req, res) => {
 };
 
 // get test by id
-// controllers/testController.js
 export const getTestById = async (req, res) => {
   try {
     const test = await Test.findOne({

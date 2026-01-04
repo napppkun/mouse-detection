@@ -1,3 +1,4 @@
+// routes/templateRoutes.js
 import express from "express";
 import { verifyFirebase } from "../middleware/verifyFirebase.js";
 import { createTemplate, getTemplateByTest, updateTemplate } from "../controllers/templateController.js";

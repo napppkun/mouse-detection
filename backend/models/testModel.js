@@ -25,11 +25,13 @@ const testSchema = new mongoose.Schema(
       index: true,
     },
 
-    // boundingBoxes แบบรวม
+    // boundingBoxes for EPM, Ymaze
     boundingBoxes: { type: Array, default: [] },
-
-    // เก็บกล่อง “ต่อ mouseCode” (exact ที่ส่งจาก UI) ไม่ได้ใช้แล้ว
-    // boundingBoxesByMouse: { type: mongoose.Schema.Types.Mixed, default: {} },
+    // ellipse template for MWM
+    mwmTemplateByMouse: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
 
     settings: {
       fps: { type: Number, default: 30 },
