@@ -1,154 +1,325 @@
 // src/pages/HomePage.jsx
 import React, { useEffect, useMemo, useState } from "react";
-import { Search, ChevronUp, ChevronDown } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { auth } from "../firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import "../styles/app.css";
 
-const BACKEND_URL = window._env_?.BACKEND_URL || process.env.BACKEND_URL || "http://localhost:5000";
-const API_BASE = (BACKEND_URL.endsWith('/') ? BACKEND_URL : BACKEND_URL + '/') + "api/mice";
+const BACKEND_URL =
+  window._env_?.BACKEND_URL ||
+  process.env.REACT_APP_BACKEND_URL ||
+  process.env.BACKEND_URL ||
+  "http://localhost:5000";
+
+const API_BASE = `${BACKEND_URL}/api/tests`;
+
+function prettyBehavior(behaviorTest) {
+  if (!behaviorTest) return "-";
+  const v = String(behaviorTest).toLowerCase();
+  if (v.includes("elevated")) return "Elevated Plus Maze (EPM)";
+  if (v.includes("ymaze") || v === "y-maze" || v === "y maze") return "Y-Maze";
+  if (v.includes("morris") || v.includes("mwm")) return "Morris Water Maze (MWM)";
+  return behaviorTest;
+}
+
+function prettyStatus(status) {
+  if (!status) return "-";
+  const s = String(status).toLowerCase();
+  if (s === "configured") return "Configured";
+  if (s === "processing") return "Processing";
+  if (s === "completed") return "Completed";
+  if (s === "failed") return "Failed";
+  if (s === "created") return "Draft";
+  return status;
+}
+
+function formatDate(d) {
+  if (!d) return "-";
+  try {
+    return new Date(d).toLocaleString();
+  } catch {
+    return String(d);
+  }
+}
 
 export default function HomePage() {
-  const [mice, setMice] = useState([]);
+  const navigate = useNavigate();
+
+  const [tests, setTests] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [query, setQuery] = useState("");
-  const [sortDir, setSortDir] = useState("asc");
+  const [err, setErr] = useState("");
+  const [idToken, setIdToken] = useState("");
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
       if (!u) {
-        setError("Please log in");
-        setMice([]);
-        setLoading(false);
+        // ถ้ายังไม่ได้ login ให้เด้งไปหน้า login
+        navigate("/login", { replace: true, state: { from: "/" } });
         return;
       }
-      try {
-        setLoading(true);
-        setError("");
-        const idToken = await u.getIdToken(true);
-        const res = await fetch(API_BASE, {
-          headers: { Authorization: `Bearer ${idToken}` },
-        });
-        if (!res.ok) throw new Error("Failed to load");
-        const data = await res.json();
-        setMice(Array.isArray(data) ? data : []);
-      } catch (e) {
-        console.error(e);
-        setError("Error fetching mice");
-        setMice([]);
-      } finally {
-        setLoading(false);
-      }
+      const tok = await u.getIdToken(false);
+      setIdToken(tok);
+      fetchTests(tok);
     });
     return unsub;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const normalize = (s) => (s || "").toString().toLowerCase();
+  async function fetchTests(token) {
+    try {
+      setLoading(true);
+      setErr("");
 
-  const latestGroupName = (mouse) => {
-    const arr = Array.isArray(mouse.dailyRecord) ? mouse.dailyRecord : [];
-    if (arr.length === 0) return "-";
-    let latest = arr[0];
-    for (const r of arr) {
-      if (new Date(r.date) > new Date(latest.date)) latest = r;
+      const res = await fetch(`${API_BASE}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        throw new Error(txt || "Failed to fetch tests");
+      }
+
+      const json = await res.json();
+      const list =
+        json?.data ||
+        json?.tests ||
+        (Array.isArray(json) ? json : []);
+
+      // เรียงจากใหม่ไปเก่า (ใช้ createdAt หรือ date หรือตามที่มี)
+      const sorted = [...list].sort((a, b) => {
+        const ad = a.createdAt || a.date || 0;
+        const bd = b.createdAt || b.date || 0;
+        return new Date(bd) - new Date(ad);
+      });
+
+      setTests(sorted);
+    } catch (e) {
+      console.error(e);
+      setErr(e.message || "Failed to load tests");
+    } finally {
+      setLoading(false);
     }
-    return latest?.group?.name || "-";
+  }
+
+  // สรุปข้อมูลสำหรับ dashboard
+  const dashboard = useMemo(() => {
+    const total = tests.length;
+    const byType = { epm: 0, ymaze: 0, mwm: 0, other: 0 };
+
+    for (const t of tests) {
+      const v = String(t.behaviorTest || "").toLowerCase();
+      if (v.includes("elevated")) byType.epm += 1;
+      else if (v.includes("ymaze") || v === "y-maze" || v === "y maze") byType.ymaze += 1;
+      else if (v.includes("morris") || v.includes("mwm")) byType.mwm += 1;
+      else byType.other += 1;
+    }
+
+    return { total, ...byType };
+  }, [tests]);
+
+  const latest = tests.slice(0, 10); // แสดง 10 รายการล่าสุด (ปรับได้)
+
+  const handleRowClick = (id) => {
+    if (!id) return;
+    navigate(`/tests/${id}`);
   };
 
-  const rows = useMemo(() => {
-    const term = normalize(query);
-    const list = mice
-      .map((m) => ({
-        _id: m._id,
-        code: m.code || "",
-        test: "-",
-        group: latestGroupName(m),
-      }))
-      .filter(
-        (r) =>
-          !term ||
-          normalize(r.code).includes(term) ||
-          normalize(r.test).includes(term) ||
-          normalize(r.group).includes(term)
-      )
-      .sort((a, b) => {
-        const A = normalize(a.code);
-        const B = normalize(b.code);
-        if (A < B) return sortDir === "asc" ? -1 : 1;
-        if (A > B) return sortDir === "asc" ? 1 : -1;
-        return 0;
-      });
-    return list;
-  }, [mice, query, sortDir]);
+  if (loading) {
+    return (
+      <div className="app-main">
+        <div className="main-wrap">
+          <div className="card">
+            <p>Loading tests…</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-  const toggleSort = () => setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+  if (err) {
+    return (
+      <div className="app-main">
+        <div className="main-wrap">
+          <div className="card">
+            <p style={{ color: "var(--danger)" }}>{err}</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="app-main">
-      <div className="main-wrap">
-        <div className="card">
-          {/* หัวข้อ + Search */}
-          <div style={{ display: "flex", alignItems: "center", gap: 16, justifyContent: "space-between" }}>
-            {/* <h3 style={{ margin: 0 }}>My Test</h3> */}
-  
-            <div className="search-wrap" style={{ margin: 0, minWidth: 340 }}>
-              <input
-                className="search-pill"
-                placeholder="Search by Code, Test, Group"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-              />
-              <Search className="search-icon" />
+      <div className="main-wrap" style={{ display: "grid", gap: 16 }}>
+        {/* Header */}
+        <div className="card" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+          <div>
+            <h3 style={{ margin: 0 }}>Dashboard</h3>
+            <div className="muted" style={{ marginTop: 4 }}>
+              Overview of your recent behavioral tests
             </div>
           </div>
-  
-          {/* ตาราง */}
-          <table className="table" style={{ marginTop: 12 }}>
-            <thead>
-              <tr>
-                <th>
-                  <button
-                    onClick={toggleSort}
-                    style={{
-                      background: "transparent",
-                      border: "none",
-                      padding: 0,
-                      cursor: "pointer",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 6,
-                      fontWeight: 700,
-                    }}
-                    title={`Sort by Code (${sortDir})`}
-                  >
-                    Code {sortDir === "asc" ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                  </button>
-                </th>
-                <th>Test</th>
-                <th>Group</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr><td colSpan={3}>Loading...</td></tr>
-              ) : error ? (
-                <tr><td colSpan={3} style={{ color: "var(--danger)" }}>{error}</td></tr>
-              ) : rows.length === 0 ? (
-                <tr><td colSpan={3}>No data</td></tr>
-              ) : (
-                rows.map((r) => (
-                  <tr key={r._id}>
-                    <td>{r.code}</td>
-                    <td>{r.test}</td>
-                    <td>{r.group}</td>
+        </div>
+
+        {/* Summary cards */}
+        <div
+          className="card"
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+            gap: 12,
+          }}
+        >
+          <div
+            style={{
+              padding: 12,
+              borderRadius: 6,
+              border: "1px solid var(--border)",
+              backgroundColor: "#0f172a",
+              color: "#e5e7eb",
+            }}
+          >
+            <div className="muted" style={{ color: "#9ca3af", fontSize: 12 }}>
+              Total Tests
+            </div>
+            <div style={{ fontSize: 24, fontWeight: 600 }}>{dashboard.total}</div>
+          </div>
+
+          <div
+            style={{
+              padding: 12,
+              borderRadius: 6,
+              border: "1px solid var(--border)",
+              backgroundColor: "#f0fdf4",
+            }}
+          >
+            <div className="muted" style={{ fontSize: 12 }}>
+              EPM
+            </div>
+            <div style={{ fontSize: 20, fontWeight: 600 }}>{dashboard.epm}</div>
+          </div>
+
+          <div
+            style={{
+              padding: 12,
+              borderRadius: 6,
+              border: "1px solid var(--border)",
+              backgroundColor: "#eff6ff",
+            }}
+          >
+            <div className="muted" style={{ fontSize: 12 }}>
+              Y-Maze
+            </div>
+            <div style={{ fontSize: 20, fontWeight: 600 }}>{dashboard.ymaze}</div>
+          </div>
+
+          <div
+            style={{
+              padding: 12,
+              borderRadius: 6,
+              border: "1px solid var(--border)",
+              backgroundColor: "#ecfeff",
+            }}
+          >
+            <div className="muted" style={{ fontSize: 12 }}>
+              MWM
+            </div>
+            <div style={{ fontSize: 20, fontWeight: 600 }}>{dashboard.mwm}</div>
+          </div>
+        </div>
+
+        {/* Latest tests list */}
+        <div className="card" style={{ display: "grid", gap: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <h4 style={{ margin: 0 }}>Recent Tests</h4>
+            <div className="muted" style={{ fontSize: 12 }}>
+              Showing {latest.length} of {tests.length}
+            </div>
+          </div>
+
+          {latest.length === 0 ? (
+            <div className="muted">No tests found. Create a new test to get started.</div>
+          ) : (
+            <div
+              style={{
+                borderRadius: 6,
+                border: "1px solid var(--border)",
+                overflow: "hidden",
+              }}
+            >
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+                <thead style={{ backgroundColor: "#f9fafb" }}>
+                  <tr>
+                    <th style={{ textAlign: "left", padding: "8px 12px" }}>Name</th>
+                    <th style={{ textAlign: "left", padding: "8px 12px" }}>Type</th>
+                    <th style={{ textAlign: "left", padding: "8px 12px" }}>Status</th>
+                    <th style={{ textAlign: "left", padding: "8px 12px" }}>Created</th>
+                    <th style={{ textAlign: "right", padding: "8px 12px" }}>Actions</th>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                </thead>
+                <tbody>
+                  {latest.map((t) => (
+                    <tr
+                      key={t._id}
+                      style={{
+                        cursor: "pointer",
+                        borderTop: "1px solid var(--border)",
+                      }}
+                      onClick={() => handleRowClick(t._id)}
+                    >
+                      <td style={{ padding: "8px 12px", maxWidth: 260 }}>
+                        <div style={{ fontWeight: 500 }}>{t.name || "-"}</div>
+                        <div className="muted" style={{ fontSize: 12 }}>
+                          ID: {t._id}
+                        </div>
+                      </td>
+                      <td style={{ padding: "8px 12px" }}>
+                        <span className="muted">{prettyBehavior(t.behaviorTest)}</span>
+                      </td>
+                      <td style={{ padding: "8px 12px" }}>
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            padding: "2px 8px",
+                            borderRadius: 999,
+                            fontSize: 12,
+                            backgroundColor:
+                              String(t.status).toLowerCase() === "completed"
+                                ? "#dcfce7"
+                                : String(t.status).toLowerCase() === "processing"
+                                  ? "#fef3c7"
+                                  : String(t.status).toLowerCase() === "failed"
+                                    ? "#fee2e2"
+                                    : "#e5e7eb",
+                          }}
+                        >
+                          {prettyStatus(t.status)}
+                        </span>
+                      </td>
+                      <td style={{ padding: "8px 12px" }}>
+                        <span className="muted">{formatDate(t.createdAt || t.date)}</span>
+                      </td>
+                      <td style={{ padding: "8px 12px", textAlign: "right" }}>
+                        <button
+                          className="btn"
+                          style={{ padding: "4px 10px", fontSize: 12 }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRowClick(t._id);
+                          }}
+                        >
+                          View
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
     </div>
   );
-}  
+}
