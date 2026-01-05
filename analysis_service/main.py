@@ -17,6 +17,7 @@ from contextlib import contextmanager
 from scripts.trackers.rat_body_tracker import RatBodyTracker
 import statistics
 from collections import defaultdict, Counter
+from datetime import datetime
 
 # โหลด .env ตั้งแต่วินาทีแรกของโปรเซส
 load_dotenv(override=True)
@@ -197,7 +198,7 @@ def notify_video_report(job_id, status, result_urls=None, metrics=None, error=No
             "id": job_id,
             "status": status,
             "resultUrls": result_urls or {},
-            "urls": result_urls or {},            # ← alias เผื่อ handler เก่า
+            "urls": result_urls or {},
             "metrics": metrics or {},
             "error": error,
             "runId": run_id,
@@ -234,7 +235,7 @@ def _process_one_item(maze: str, item: Item) -> dict:
       push_progress(job_id, 0.0, "processing", "start", run_id=run_id)
 
       def hook(p):
-        job_progress[job_id] = {"status":"processing","percent": p}
+        job_progress[job_id] = {"status":"processing","percent": p, "updatedAt": datetime.utcnow().isoformat(),}
         push_progress(job_id, p, "processing", "progress", run_id=run_id)
 
       boxes = [b.dict() for b in item.boxes]
@@ -273,15 +274,20 @@ def _process_one_item(maze: str, item: Item) -> dict:
             metrics = {"mwm": raw}
       
       # [LOG] หลังได้ผลลัพธ์จาก analyzer
-      logger.info("[PROC] outs id=%s keys=%s has_video=%s has_excel=%s",
+      logger.info("[PROC] outs id=%s keys=%s has_video=%s has_excel=%s path_vid=%s path_xls=%s",
         job_id, list(outputs.keys()),
-        bool(outputs.get("output_video")), bool(outputs.get("excel_file")))
+        bool(outputs.get("output_video")), bool(outputs.get("excel_file")),
+        outputs.get("output_video"), outputs.get("excel_file"))
 
       if not outputs or not isinstance(outputs, dict):
         raise RuntimeError("process_video_analysis returned no result")
 
       vid = outputs.get("output_video")
       xls = outputs.get("excel_file")
+
+      logger.info("[PROC] before upload id=%s exists_vid=%s exists_xls=%s",
+        job_id, os.path.exists(vid) if vid else None, os.path.exists(xls) if xls else None)
+
       if not vid or not os.path.exists(vid):
         raise FileNotFoundError(f"Output video missing: {vid}")
       if not xls or not os.path.exists(xls):
@@ -289,6 +295,7 @@ def _process_one_item(maze: str, item: Item) -> dict:
 
       video_url = upload_to_gcs(vid, "results/videos")
       excel_url = upload_to_gcs(xls, "results/excel")
+      logger.info("[PROC] uploaded id=%s video_url=%s excel_url=%s", job_id, video_url, excel_url)
 
       # หลังได้ video_url และ excel_url แล้ว
       processing_status[job_id] = "done"
@@ -345,6 +352,7 @@ def _process_one_item(maze: str, item: Item) -> dict:
       return {"id": job_id, "status":"failed", "error": err}
     
     except Exception as e:
+      logger.exception("[PROC] FAILED id=%s: %s", job_id, e)
       err = str(e)
       job_progress[job_id] = {"status":"failed","percent": job_progress.get(job_id,{}).get("percent",0.0),"error": err}
       push_progress(job_id, job_progress[job_id]["percent"], "failed", err, run_id=run_id)
