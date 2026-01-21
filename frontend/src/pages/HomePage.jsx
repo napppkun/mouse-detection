@@ -84,10 +84,10 @@ export default function HomePage() {
         json?.tests ||
         (Array.isArray(json) ? json : []);
 
-      // เรียงจากใหม่ไปเก่า (ใช้ createdAt หรือ date หรือตามที่มี)
+      // เรียง Recent Tests ตามการอัปเดตล่าสุด
       const sorted = [...list].sort((a, b) => {
-        const ad = a.createdAt || a.date || 0;
-        const bd = b.createdAt || b.date || 0;
+        const ad = a.updatedAt || a.createdAt || a.date || 0;
+        const bd = b.updatedAt || b.createdAt || b.date || 0;
         return new Date(bd) - new Date(ad);
       });
 
@@ -301,7 +301,7 @@ export default function HomePage() {
                         padding: "8px 12px",
                       }}
                     >
-                      Created
+                      Last Updated
                     </th>
                     <th
                       style={{
@@ -361,7 +361,7 @@ export default function HomePage() {
                       </td>
                       <td style={{ padding: "8px 12px" }}>
                         <span className="muted">
-                          {formatDate(t.createdAt || t.date)}
+                          {formatDate(t.updatedAt || t.createdAt || t.date)}
                         </span>
                       </td>
                       <td
