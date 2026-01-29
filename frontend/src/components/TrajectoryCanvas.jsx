@@ -2,7 +2,10 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 
-const BACKEND_URL = window._env_?.BACKEND_URL || process.env.REACT_APP_BACKEND_URL || "http://localhost:5000";
+const BACKEND_URL =
+  window._env_?.BACKEND_URL ||
+  process.env.REACT_APP_BACKEND_URL ||
+  "http://localhost:5000";
 
 // ========== Helper Functions ==========
 function drawArenaOutline(ctx, videoW, videoH, scale, offsetX, offsetY, mazeType, hasCustomEllipse = false) {
@@ -82,7 +85,6 @@ function drawMWMQuadrantLabels(ctx, ellipse, scale, offsetX, offsetY) {
   const baseRy = ry * scale;
   const rad = (rotationDeg * Math.PI) / 180;
 
-  // จุดวาง label บน local ellipse (ก่อนหมุน)
   const quads = [
     { label: "Q1", dx: baseRx * 0.6, dy: -baseRy * 0.6 },
     { label: "Q2", dx: -baseRx * 0.6, dy: -baseRy * 0.6 },
@@ -97,7 +99,6 @@ function drawMWMQuadrantLabels(ctx, ellipse, scale, offsetX, offsetY) {
   ctx.textBaseline = "middle";
 
   quads.forEach(({ label, dx, dy }) => {
-    // apply rotation
     const rxp = dx * Math.cos(rad) - dy * Math.sin(rad);
     const ryp = dx * Math.sin(rad) + dy * Math.cos(rad);
     ctx.fillText(label, baseCx + rxp, baseCy + ryp);
@@ -110,22 +111,18 @@ function drawMWMQuadrantLines(ctx, ellipse, scale, offsetX, offsetY) {
   if (!ellipse) return;
   const { cx, cy, rx, ry, rotationDeg = 0 } = ellipse;
 
-  // ศูนย์กลาง + รัศมี (scale แล้ว)
   const baseCx = offsetX + cx * scale;
   const baseCy = offsetY + cy * scale;
   const baseRx = rx * scale;
   const baseRy = ry * scale;
   const rad = (rotationDeg * Math.PI) / 180;
 
-  // เส้นแกน x: (-rx, 0) → (rx, 0)
   const h1 = { x: -baseRx, y: 0 };
   const h2 = { x: baseRx, y: 0 };
 
-  // เส้นแกน y: (0, -ry) → (0, ry)
   const v1 = { x: 0, y: -baseRy };
   const v2 = { x: 0, y: baseRy };
 
-  // helper หมุนจุดรอบ origin
   const rotate = (p) => ({
     x: p.x * Math.cos(rad) - p.y * Math.sin(rad),
     y: p.x * Math.sin(rad) + p.y * Math.cos(rad),
@@ -140,13 +137,11 @@ function drawMWMQuadrantLines(ctx, ellipse, scale, offsetX, offsetY) {
   ctx.strokeStyle = "#ccc";
   ctx.lineWidth = 1;
 
-  // เส้นแนวนอน (ผ่านศูนย์กลาง)
   ctx.beginPath();
   ctx.moveTo(baseCx + rh1.x, baseCy + rh1.y);
   ctx.lineTo(baseCx + rh2.x, baseCy + rh2.y);
   ctx.stroke();
 
-  // เส้นแนวตั้ง (ผ่านศูนย์กลาง)
   ctx.beginPath();
   ctx.moveTo(baseCx + rv1.x, baseCy + rv1.y);
   ctx.lineTo(baseCx + rv2.x, baseCy + rv2.y);
@@ -155,30 +150,86 @@ function drawMWMQuadrantLines(ctx, ellipse, scale, offsetX, offsetY) {
   ctx.restore();
 }
 
-function drawTrajectoryPath(ctx, trajectory, scale, offsetX, offsetY) {
+// ================= Trajectory helpers =================
+
+// แบ่ง trajectory ออกเป็นหลายเส้นย่อย ถ้า gap ด้านเวลาเยอะเกิน หรือความเร็วสูงผิดปกติ
+function splitTrajectoryIntoSegments(trajectory, sampleInterval) {
+  const segments = [];
+  if (!trajectory || trajectory.length < 2) return segments;
+
+  const dtBase = (typeof sampleInterval === 'number' && sampleInterval > 0)
+    ? sampleInterval
+    : 1.0;
+  const DT_THRESHOLD = dtBase * 1.7;         // ถ้าเว้นเกิน ~1.7 เท่าของช่วง sample → ตัดเส้น
+  const MAX_SPEED = 800;                     // px/sec คร่าว ๆ ป้องกัน jump แรง ๆ
+
+  let current = [];
+
+  for (let i = 0; i < trajectory.length; i++) {
+    const p = trajectory[i];
+    if (!p || typeof p.x !== 'number' || typeof p.y !== 'number') {
+      if (current.length > 1) segments.push(current);
+      current = [];
+      continue;
+    }
+
+    if (current.length === 0) {
+      current.push(p);
+      continue;
+    }
+
+    const prev = current[current.length - 1];
+    const dt = (p.t ?? i) - (prev.t ?? (i - 1));
+    const dx = p.x - prev.x;
+    const dy = p.y - prev.y;
+    const dist = Math.hypot(dx, dy);
+    const speed = dt > 0 ? dist / dt : 0;
+
+    const gapByTime = dt > DT_THRESHOLD;
+    const gapBySpeed = speed > MAX_SPEED;
+
+    if (gapByTime || gapBySpeed) {
+      if (current.length > 1) segments.push(current);
+      current = [p];
+    } else {
+      current.push(p);
+    }
+  }
+
+  if (current.length > 1) segments.push(current);
+  return segments;
+}
+
+function drawTrajectoryPath(ctx, trajectory, scale, offsetX, offsetY, sampleInterval) {
   if (!trajectory || trajectory.length < 2) return;
 
-  // Draw path with gradient color from blue (start) to red (end)
+  const segments = splitTrajectoryIntoSegments(trajectory, sampleInterval);
+  if (!segments.length) return;
+
   ctx.lineWidth = 2.5;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
 
-  for (let i = 0; i < trajectory.length - 1; i++) {
-    const p1 = trajectory[i];
-    const p2 = trajectory[i + 1];
+  segments.forEach((seg) => {
+    if (seg.length < 2) return;
 
-    // Color gradient: blue → red
-    const progress = i / (trajectory.length - 1);
-    const r = Math.floor(59 + progress * (239 - 59));   // 59 → 239
-    const g = Math.floor(130 - progress * 130);         // 130 → 0
-    const b = Math.floor(246 - progress * (246 - 68));  // 246 → 68
+    for (let i = 0; i < seg.length - 1; i++) {
+      const p1 = seg[i];
+      const p2 = seg[i + 1];
 
-    ctx.strokeStyle = `rgb(${r},${g},${b})`;
-    ctx.beginPath();
-    ctx.moveTo(offsetX + p1.x * scale, offsetY + p1.y * scale);
-    ctx.lineTo(offsetX + p2.x * scale, offsetY + p2.y * scale);
-    ctx.stroke();
-  }
+      // gradient ภายใน segment เอง (เริ่มน้ำเงิน → แดง)
+      const progress = i / (seg.length - 1);
+      const r = Math.floor(59 + progress * (239 - 59));   // 59 → 239
+      const g = Math.floor(130 - progress * 130);         // 130 → 0
+      const b = Math.floor(246 - progress * (246 - 68));  // 246 → 68
+
+      ctx.strokeStyle = `rgb(${r},${g},${b})`;
+      ctx.beginPath();
+      ctx.moveTo(offsetX + p1.x * scale, offsetY + p1.y * scale);
+      ctx.lineTo(offsetX + p2.x * scale, offsetY + p2.y * scale);
+      ctx.stroke();
+    }
+  });
 
   // Start point (green circle)
   const start = trajectory[0];
@@ -202,7 +253,7 @@ function drawTrajectoryPath(ctx, trajectory, scale, offsetX, offsetY) {
   );
   ctx.fill();
 
-  // Add labels
+  // Labels
   ctx.fillStyle = '#fff';
   ctx.font = 'bold 10px sans-serif';
   ctx.textAlign = 'center';
@@ -217,7 +268,6 @@ function drawHeatmap(ctx, trajectory, videoW, videoH, scale, offsetX, offsetY) {
   const GRID_SIZE = 40;
   const grid = Array(GRID_SIZE).fill(0).map(() => Array(GRID_SIZE).fill(0));
 
-  // Count visits per cell
   for (const p of trajectory) {
     const gx = Math.floor((p.x / videoW) * GRID_SIZE);
     const gy = Math.floor((p.y / videoH) * GRID_SIZE);
@@ -247,7 +297,6 @@ function drawHeatmap(ctx, trajectory, videoW, videoH, scale, offsetX, offsetY) {
   }
 }
 
-// label for different types of bounding box
 function prettyRegionLabel(type) {
   if (!type) return '';
   const map = {
@@ -260,7 +309,6 @@ function prettyRegionLabel(type) {
   return type;
 }
 
-// Draw ROI
 function drawUserRegions(ctx, regions, scale, offsetX, offsetY) {
   if (!regions || !regions.length) return;
 
@@ -297,7 +345,6 @@ function drawUserRegions(ctx, regions, scale, offsetX, offsetY) {
     ctx.strokeRect(-scaledW / 2, -scaledH / 2, scaledW, scaledH);
     ctx.restore();
 
-    // label above ROI
     const label = prettyRegionLabel(type);
     if (label) {
       ctx.fillText(label, cx, cy - scaledH / 2 - 6);
@@ -346,11 +393,10 @@ export default function TrajectoryCanvas({ videoId, token, mazeType, regions = [
 
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
-    const { trajectory, videoDimensions } = data;
+    const { trajectory, videoDimensions, metadata } = data;
 
     if (!trajectory || !trajectory.length) return;
 
-    // Calculate scaling
     const videoW = videoDimensions?.width || 1920;
     const videoH = videoDimensions?.height || 1080;
     const scaleX = (canvas.width * 0.9) / videoW;
@@ -364,13 +410,12 @@ export default function TrajectoryCanvas({ videoId, token, mazeType, regions = [
       typeof ellipse.cx === "number" &&
       typeof ellipse.cy === "number";
 
-    // Clear canvas
+    const sampleInterval = metadata?.sampleInterval ?? metadata?.sample_interval ?? 0;
+
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Draw background arena outline
     drawArenaOutline(ctx, videoW, videoH, scale, offsetX, offsetY, mazeType, hasEllipse);
 
-    // Draw ellipse region and label
     if (
       (mazeType?.toLowerCase().includes("morris") ||
         mazeType?.toLowerCase().includes("mwm")) &&
@@ -381,16 +426,14 @@ export default function TrajectoryCanvas({ videoId, token, mazeType, regions = [
       drawMWMQuadrantLabels(ctx, ellipse, scale, offsetX, offsetY);
     }
 
-    // Heatmap
     if (showHeatmap) {
       drawHeatmap(ctx, trajectory, videoW, videoH, scale, offsetX, offsetY);
     }
 
-    // Draw user Regions
     drawUserRegions(ctx, regions, scale, offsetX, offsetY);
 
-    // Draw trajectory path
-    drawTrajectoryPath(ctx, trajectory, scale, offsetX, offsetY);
+    // ⬅️ ใช้ sampleInterval เพื่อหลีกเลี่ยงเส้นกระโดด
+    drawTrajectoryPath(ctx, trajectory, scale, offsetX, offsetY, sampleInterval);
 
   }, [data, showHeatmap, mazeType, regions, ellipse]);
 
