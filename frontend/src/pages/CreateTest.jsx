@@ -13,7 +13,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import "../styles/app.css";
 
 const API_BASE = window._env_?.BACKEND_URL || process.env.BACKEND_URL || "http://127.0.0.1:5000";
-const MAX_VIDEOS = 10;
+const MAX_VIDEOS = 20;
 
 export default function CreateTest({ onNext, onPrev }) {
   const navigate = useNavigate();
