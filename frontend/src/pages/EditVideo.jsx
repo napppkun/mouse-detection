@@ -85,7 +85,17 @@ export default function EditVideo() {
   const trimsRef = useRef(trims);
   useEffect(() => { trimsRef.current = trims; }, [trims]);
 
-  const MAX_WINDOW = mazeType === "MorrisWaterMaze" ? 60 : 300;
+  const DEFAULT_MAX_WINDOW = mazeType === "MorrisWaterMaze" ? 60 : 300;
+
+  const templateTimeLimit = Number(
+    template?.analysisConfig?.timeLimitSec ??
+    template?.template?.analysisConfig?.timeLimitSec
+  );
+
+  const MAX_WINDOW =
+    Number.isFinite(templateTimeLimit) && templateTimeLimit > 0
+      ? templateTimeLimit
+      : DEFAULT_MAX_WINDOW;
 
   // ── Refs
   const videoRef = useRef(null);
@@ -208,8 +218,7 @@ export default function EditVideo() {
       setDuration(dur);
       if (curVidId) setDurations((p) => ({ ...p, [curVidId]: dur }));
 
-      const fixed = mazeType === "MorrisWaterMaze" ? 60 : 300;
-      const defaultEnd = fixed && dur > 0 ? Math.min(fixed, dur) : fixed || dur;
+      const defaultEnd = MAX_WINDOW && dur > 0 ? Math.min(MAX_WINDOW, dur) : MAX_WINDOW || dur;
 
       const saved = trimsRef.current[curVidId];
       const start = saved?.start ?? 0;
@@ -233,7 +242,7 @@ export default function EditVideo() {
       v.removeEventListener("loadedmetadata", onMeta);
       v.removeEventListener("error", onErr);
     };
-  }, [videoUrl, mazeType, curVidId]);
+  }, [videoUrl, mazeType, curVidId, MAX_WINDOW]);
 
   // stop at trim end
   useEffect(() => {
@@ -284,7 +293,7 @@ export default function EditVideo() {
     const p = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     const t = p * duration;
     const v = videoRef.current;
-    const fixedWindow = mazeType === "MorrisWaterMaze" ? 60 : 300;
+    const fixedWindow = MAX_WINDOW;
 
     if (type === "start") {
       const tt = Math.max(0, Math.min(t, trimEnd - 0.1));
@@ -313,7 +322,7 @@ export default function EditVideo() {
         const r = el.getBoundingClientRect();
         const p = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
         const t = p * duration;
-        const fixedWindow = mazeType === "MorrisWaterMaze" ? 60 : 300;
+        const fixedWindow = MAX_WINDOW;
 
         if (trimDragType === "start") {
           const tt = Math.max(0, Math.min(t, trimEnd - 0.1));
@@ -594,21 +603,29 @@ export default function EditVideo() {
     try {
       const vid = curVidId;
       if (!vid) throw new Error("Missing video id");
-      const startSec = Math.max(0, Math.min(trimStart, duration || 0));
-      const endSec = Math.max(startSec + 0.1, Math.min(trimEnd || duration || 0, (duration || 0)));
 
       const u = auth.currentUser;
       if (!u) throw new Error("Please log in");
       const idToken = await u.getIdToken(true);
+
+      let startSec = Math.max(0, Math.min(Number(trimStart || 0), duration || 0));
+      let endSec = Math.max(startSec + 0.1, Math.min(Number(trimEnd || 0), duration || 0));
+
+      if (endSec - startSec > MAX_WINDOW) {
+        endSec = Math.min((duration || Infinity), startSec + MAX_WINDOW);
+      }
 
       const res = await fetch(`${BACKEND_URL}/api/videos/${vid}/trim`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
         body: JSON.stringify({ startSec, endSec }),
       });
+
       const json = await res.json();
       if (!res.ok) throw new Error(json?.message || "Failed to save trim");
 
+      setTrimStart(startSec);
+      setTrimEnd(endSec);
       setTrims((p) => ({ ...p, [vid]: { start: startSec, end: endSec } }));
       setTrimSaved((p) => ({ ...p, [vid]: true }));
       setError("");
@@ -692,7 +709,7 @@ export default function EditVideo() {
     setIsProcessing(true); setError("");
 
     const perVideoTimesById = {};
-    const windowLimit = mazeType === "MorrisWaterMaze" ? 60 : 300;
+    const windowLimit = MAX_WINDOW;
     (videoPairs || []).forEach((vp) => {
       const vid = vp.videoId || vp._id; if (!vid) return;
       const saved = trimsRef.current[vid];

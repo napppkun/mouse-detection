@@ -847,15 +847,17 @@ export default function TemplateDetail() {
 
                 <div className="form-row onecol" style={{ marginTop: 12 }}>
                     <label>Time Limit (seconds)</label>
-                    <input
-                        type="number"
-                        className="input"
-                        min="1"
-                        step="1"
-                        value={timeLimitSec}
-                        onChange={(e) => setTimeLimitSec(e.target.value)}
-                        placeholder={isMWM ? "e.g. 60" : "e.g. 300"}
-                    />
+                    <div className="input-group">
+                        <input
+                            type="number"
+                            className="input"
+                            min="1"
+                            step="1"
+                            value={timeLimitSec}
+                            onChange={(e) => setTimeLimitSec(e.target.value)}
+                            placeholder={isMWM ? "e.g. 60" : "e.g. 300"}
+                        />
+                    </div>
                     <div className="muted" style={{ marginTop: 6 }}>
                         This limit will be applied to all videos in this test during analysis.
                     </div>
