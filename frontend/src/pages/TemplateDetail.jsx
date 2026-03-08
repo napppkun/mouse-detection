@@ -1,5 +1,5 @@
 // src/pages/TemplateDetail.jsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { auth } from "../firebase";
 import { ChevronLeft, Save, Upload, Trash2, Circle as CircleIcon } from "lucide-react";
@@ -70,7 +70,6 @@ export default function TemplateDetail() {
     const drawStartRef = useRef({ x: 0, y: 0 });
     const [currentDrawRect, setCurrentDrawRect] = useState(null);
     const drawRectRef = useRef(null);
-    const [rectDrag, setRectDrag] = useState(null);
     const [isDragging, setIsDragging] = useState(false);
     const [isResizing, setIsResizing] = useState(false);
     const [resizeCorner, setResizeCorner] = useState(null); // 'nw'|'ne'|'se'|'sw'
@@ -81,6 +80,9 @@ export default function TemplateDetail() {
     const [ellipse, setEllipse] = useState(null); // {cx,cy,rx,ry,rotationDeg}
     const [tplDragMode, setTplDragMode] = useState(null);
     const [tplDragStart, setTplDragStart] = useState({ x: 0, y: 0 });
+
+    // set limit time
+    const [timeLimitSec, setTimeLimitSec] = useState("");
 
     const [error, setError] = useState("");
     const [saving, setSaving] = useState(false);
@@ -99,7 +101,6 @@ export default function TemplateDetail() {
                 });
                 const json = await res.json();
                 if (!res.ok) throw new Error(json?.message || "Failed to load test");
-                // สมมติ schema: { data: { name, behaviorTest } }
                 const doc = json?.data || json;
                 setTestName(doc?.name || "");
                 setBehaviorTest(doc?.behaviorTest || "");
@@ -125,6 +126,56 @@ export default function TemplateDetail() {
         if (!fs.length) return;
         setSampleFile(fs[0]);
     };
+
+    useEffect(() => {
+        if (!testId || !behaviorTest) return;
+
+        (async () => {
+            try {
+                const u = auth.currentUser;
+                if (!u) return;
+                const idToken = await u.getIdToken(true);
+
+                const res = await fetch(`${API_BASE}/api/templates/by-test/${testId}`, {
+                    headers: { Authorization: `Bearer ${idToken}` },
+                });
+                const json = await res.json();
+                if (!res.ok || !json?.success || !json?.data) return;
+
+                const tpl = json.data;
+
+                if (tpl.behaviorTest === "MorrisWaterMaze" && tpl.ellipse) {
+                    setEllipse(tpl.ellipse);
+                    setRectangles([]);
+                } else if (Array.isArray(tpl.rectangles)) {
+                    const rebuilt = tpl.rectangles.map((r, idx) => {
+                        const spec = regionSpec.find(x => x.type === r.type);
+                        return {
+                            id: Date.now() + idx,
+                            x: r.x,
+                            y: r.y,
+                            width: r.width,
+                            height: r.height,
+                            rotation: r.rotation || 0,
+                            type: r.type,
+                            color: spec?.color || "#0ea5e9",
+                            name: spec?.name || r.type,
+                        };
+                    });
+                    setRectangles(rebuilt);
+                    setEllipse(null);
+                }
+
+                setTimeLimitSec(
+                    tpl?.analysisConfig?.timeLimitSec != null
+                        ? String(tpl.analysisConfig.timeLimitSec)
+                        : ""
+                );
+            } catch (e) {
+                console.error("load template error:", e);
+            }
+        })();
+    }, [testId, behaviorTest]);
 
     // บังคับให้ component re-render เมื่อวิดีโอพร้อม/มีการย่อ–ขยาย
     const [, forceTick] = useState(0);
@@ -355,7 +406,7 @@ export default function TemplateDetail() {
         isDragging, isResizing, isRotating,
         selectedRect, dragStart
     ]);
-    
+
     const deleteSelectedRect = () => {
         setRectangles(prev => prev.filter(r => r.id !== selectedRect));
         setSelectedRect(null);
@@ -371,6 +422,10 @@ export default function TemplateDetail() {
                 setError(`Please define all regions (${(rectangles || []).length}/${(regionSpec || []).length}).`);
                 return;
             }
+        }
+        if (timeLimitSec !== "" && (!Number.isFinite(Number(timeLimitSec)) || Number(timeLimitSec) <= 0)) {
+            setError("Time limit must be a positive number.");
+            return;
         }
 
         setSaving(true);
@@ -397,6 +452,9 @@ export default function TemplateDetail() {
                             rotation: Math.round(r.rotation || 0),
                         }))
                     }),
+                analysisConfig: {
+                    timeLimitSec: timeLimitSec === "" ? undefined : Number(timeLimitSec),
+                },
             };
 
             const res = await fetch(`${API_BASE}/api/templates`, {
@@ -785,6 +843,22 @@ export default function TemplateDetail() {
                             </button>
                         </div>
                     )}
+                </div>
+
+                <div className="form-row onecol" style={{ marginTop: 12 }}>
+                    <label>Time Limit (seconds)</label>
+                    <input
+                        type="number"
+                        className="input"
+                        min="1"
+                        step="1"
+                        value={timeLimitSec}
+                        onChange={(e) => setTimeLimitSec(e.target.value)}
+                        placeholder={isMWM ? "e.g. 60" : "e.g. 300"}
+                    />
+                    <div className="muted" style={{ marginTop: 6 }}>
+                        This limit will be applied to all videos in this test during analysis.
+                    </div>
                 </div>
 
                 <div className="btn-group" style={{ justifyContent: "space-between", marginTop: 16 }}>

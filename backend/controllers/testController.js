@@ -191,12 +191,16 @@ export const analyzeTest = async (req, res) => {
       .populate({
         path: "videos",
         select: `
-          originalName filename path gcsPath
-          processedPath processedGcsPath
-          mouseCode status trimStartSec trimEndSec
-          dayIndex releaseQuadrant targetQuadrant
-          duration
-        `,
+      originalName filename path gcsPath
+      processedPath processedGcsPath
+      mouseCode status trimStartSec trimEndSec
+      dayIndex releaseQuadrant targetQuadrant
+      duration
+    `,
+      })
+      .populate({
+        path: "template",
+        select: "analysisConfig behaviorTest"
       })
       .lean();
     if (!test)
@@ -222,7 +226,17 @@ export const analyzeTest = async (req, res) => {
     // 1) normalize maze + limit
     const mazeShort = normalizeMaze(mazeType || test.behaviorTest);
     const analyzerMaze = mazeShort; // 'epm' | 'ymaze' | 'mwm'
-    const limit = Number(test.trimLimitSec) || (mazeShort === "mwm" ? 60 : 300);
+    const defaultLimit = mazeShort === "mwm" ? 60 : 300;
+
+    const templateLimit = Number(test?.template?.analysisConfig?.timeLimitSec);
+    const testLimit = Number(test?.trimLimitSec);
+
+    const limit =
+      Number.isFinite(templateLimit) && templateLimit > 0
+        ? templateLimit
+        : Number.isFinite(testLimit) && testLimit > 0
+          ? testLimit
+          : defaultLimit;
     const tq =
       mazeShort === "mwm"
         ? String(targetQuadrant || "Q1").toUpperCase()
