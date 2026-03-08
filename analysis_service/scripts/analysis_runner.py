@@ -106,7 +106,7 @@ def process_video_analysis(
 
     trajectory = []
     last_sample_time = 0.0
-    SAMPLE_INTERVAL = 1.0  # วินาที
+    SAMPLE_INTERVAL = 0.5  # วินาที
 
     prev_region = None
     frame_idx = start_frame
