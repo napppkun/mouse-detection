@@ -206,7 +206,7 @@ function drawTrajectoryPath(ctx, trajectory, scale, offsetX, offsetY, sampleInte
   const segments = splitTrajectoryIntoSegments(trajectory, sampleInterval);
   if (!segments.length) return;
 
-  ctx.lineWidth = 2.5;
+  ctx.lineWidth = 2;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
 
@@ -217,13 +217,7 @@ function drawTrajectoryPath(ctx, trajectory, scale, offsetX, offsetY, sampleInte
       const p1 = seg[i];
       const p2 = seg[i + 1];
 
-      // gradient ภายใน segment เอง (เริ่มน้ำเงิน → แดง)
-      const progress = i / (seg.length - 1);
-      const r = Math.floor(59 + progress * (239 - 59));   // 59 → 239
-      const g = Math.floor(130 - progress * 130);         // 130 → 0
-      const b = Math.floor(246 - progress * (246 - 68));  // 246 → 68
-
-      ctx.strokeStyle = `rgb(${r},${g},${b})`;
+      ctx.strokeStyle = '#2563eb';
       ctx.beginPath();
       ctx.moveTo(offsetX + p1.x * scale, offsetY + p1.y * scale);
       ctx.lineTo(offsetX + p2.x * scale, offsetY + p2.y * scale);
@@ -238,7 +232,7 @@ function drawTrajectoryPath(ctx, trajectory, scale, offsetX, offsetY, sampleInte
   ctx.arc(
     offsetX + start.x * scale,
     offsetY + start.y * scale,
-    6, 0, Math.PI * 2
+    10, 0, Math.PI * 2
   );
   ctx.fill();
 
@@ -249,7 +243,7 @@ function drawTrajectoryPath(ctx, trajectory, scale, offsetX, offsetY, sampleInte
   ctx.arc(
     offsetX + end.x * scale,
     offsetY + end.y * scale,
-    6, 0, Math.PI * 2
+    10, 0, Math.PI * 2
   );
   ctx.fill();
 
@@ -432,7 +426,6 @@ export default function TrajectoryCanvas({ videoId, token, mazeType, regions = [
 
     drawUserRegions(ctx, regions, scale, offsetX, offsetY);
 
-    // ⬅️ ใช้ sampleInterval เพื่อหลีกเลี่ยงเส้นกระโดด
     drawTrajectoryPath(ctx, trajectory, scale, offsetX, offsetY, sampleInterval);
 
   }, [data, showHeatmap, mazeType, regions, ellipse]);

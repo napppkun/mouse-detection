@@ -590,13 +590,6 @@ export default function TestDetail() {
                             <strong>E</strong> = Ending Point
                             (Red Circle)
                           </div>
-                          <div>
-                            The trajectory changes from{" "}
-                            <span style={{ fontWeight: 600, color: "#3b82f6" }}>blue</span>{" "}
-                            to{" "}
-                            <span style={{ fontWeight: 600, color: "#ef4444" }}>red</span>{" "}
-                            over time.
-                          </div>
                         </div>
 
                         {selectedMouseForViz === "ALL" ? (
