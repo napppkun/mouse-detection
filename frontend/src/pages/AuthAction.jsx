@@ -22,6 +22,11 @@ export default function AuthAction() {
     const next = q.get("next") || "/login";
     const pending = q.get("pending") === "1";
 
+    if (mode === "resetPassword" && oobCode) {
+      navigate(`/reset-password?oobCode=${encodeURIComponent(oobCode)}`, { replace: true });
+      return;
+    }
+
     // 1) กรณีจากอีเมล: verifyEmail + oobCode
     if (mode === "verifyEmail" && oobCode) {
       (async () => {
@@ -54,7 +59,7 @@ export default function AuthAction() {
             clearInterval(timer);
             navigate(next, { replace: true });
           }
-        } catch {}
+        } catch { }
       }, 3000);
 
       return () => clearInterval(timer);
