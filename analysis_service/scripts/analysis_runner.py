@@ -121,7 +121,7 @@ def process_video_analysis(
 
     trajectory = []
     last_sample_time = 0.0
-    SAMPLE_INTERVAL = 1.0  # วินาที
+    SAMPLE_INTERVAL = 0.5  # ทดลองถี่ขึ้น
 
     prev_region = None
     # centroid สุดท้ายที่ inference เจอ (ใช้ซ้ำในเฟรมที่ skip)
