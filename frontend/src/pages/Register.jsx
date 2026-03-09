@@ -4,15 +4,14 @@ import { auth, provider } from "../firebase";
 import {
   createUserWithEmailAndPassword,
   updateProfile,
-  sendEmailVerification,
+  // sendEmailVerification,
   signInWithPopup,
 } from "firebase/auth";
 import "../styles/auth.css";
-import { set } from "date-fns";
 
 const BACKEND_URL = window._env_?.BACKEND_URL || process.env.BACKEND_URL || "http://localhost:5000";
 const RAW = (BACKEND_URL.endsWith('/') ? BACKEND_URL : BACKEND_URL + '/') + 'api/users';
-const API = RAW.endsWith("/users") ? RAW : `${RAW.replace(/\/$/,"")}/users`;
+const API = RAW.endsWith("/users") ? RAW : `${RAW.replace(/\/$/, "")}/users`;
 
 export default function Register() {
   const [user, setUser] = useState({ firstName: "", lastName: "", email: "", password: "", confirmPassword: "" });
@@ -25,7 +24,10 @@ export default function Register() {
     const idToken = await firebaseUser.getIdToken();
     const res = await fetch(`${API}/save-firebase-user`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${idToken}`,
+      },
       body: JSON.stringify({
         uid: firebaseUser.uid,
         email: firebaseUser.email,
@@ -48,15 +50,17 @@ export default function Register() {
 
     try {
       const cred = await createUserWithEmailAndPassword(auth, email, password);
-      await updateProfile(cred.user, { displayName: `${firstName} ${lastName}` });
-      
-      await sendEmailVerification(cred.user, { 
-        url: `${window.location.origin}/auth/action?next=${encodeURIComponent("/login")}`,
-        handleCodeInApp: false,
+
+      await updateProfile(cred.user, {
+        displayName: `${firstName} ${lastName}`.trim(),
       });
 
-      setStatus("Verification email sent. Please check your inbox.");
-      navigate(`/auth/action?pending=1&next=${encodeURIComponent("/login")}`, { replace: true });
+      await saveUserToDB(cred.user, {
+        firstName,
+        lastName,
+      });
+
+      navigate("/home", { replace: true });
     } catch (err) {
       console.error(err);
       setStatus(err.message || "Registration failed.");

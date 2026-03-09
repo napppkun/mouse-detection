@@ -35,9 +35,10 @@ export const verifyFirebase = async (req, res, next) => {
     if (!email) {
       return res.status(400).json({ message: "Token has no email" });
     }
-    if (provider === "password" && !emailVerified) {
-      return res.status(403).json({ message: "Email not verified" });
-    }
+    // account not verified can't login
+    // if (provider === "password" && !emailVerified) {
+    //   return res.status(403).json({ message: "Email not verified" });
+    // }
 
     // แนบเฉพาะฟิลด์ที่ระบบใช้จริง เพื่อเลี่ยง test fail
     req.user = {

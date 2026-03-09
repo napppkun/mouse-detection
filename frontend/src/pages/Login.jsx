@@ -2,9 +2,9 @@ import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { auth, provider } from "../firebase";
 import {
-    signInWithEmailAndPassword,
+  signInWithEmailAndPassword,
   signInWithPopup,
-  sendEmailVerification,
+  // sendEmailVerification,
 } from "firebase/auth";
 import "../styles/auth.css";
 
@@ -64,18 +64,18 @@ export default function Login() {
       const cred = await signInWithEmailAndPassword(auth, email, password);
 
       // ยังไม่ verify → ส่งเมลยืนยัน + พาไปหน้า waiting
-      if (!cred.user.emailVerified) {
-        await sendEmailVerification(cred.user, {
-          url: `${window.location.origin}/auth/action?next=${encodeURIComponent("/home")}`,
-          handleCodeInApp: false,
-        });
-        if (remember) localStorage.setItem("rememberEmail", email);
-        else localStorage.removeItem("rememberEmail");
+      // if (!cred.user.emailVerified) {
+      //   await sendEmailVerification(cred.user, {
+      //     url: `${window.location.origin}/auth/action?next=${encodeURIComponent("/home")}`,
+      //     handleCodeInApp: false,
+      //   });
+      //   if (remember) localStorage.setItem("rememberEmail", email);
+      //   else localStorage.removeItem("rememberEmail");
 
-        // ไปหน้า AuthAction (pending) เพื่อรอการยืนยัน ไม่ปล่อยให้ไป Home
-        navigate(`/auth/action?pending=1&next=${encodeURIComponent("/home")}`, { replace: true });
-        return;
-      }
+      //   // ไปหน้า AuthAction (pending) เพื่อรอการยืนยัน ไม่ปล่อยให้ไป Home
+      //   navigate(`/auth/action?pending=1&next=${encodeURIComponent("/home")}`, { replace: true });
+      //   return;
+      // }
 
       // verify แล้ว → sync DB และเข้าระบบ
       await saveUserToDB(cred.user);
@@ -103,31 +103,31 @@ export default function Login() {
     }
   };
 
-  const resendVerification = async () => {
-    setStatus("");
-    setLoading(true);
-    try {
-      // ถ้า sign-in อยู่แล้ว ใช้ currentUser เลย
-      const user = auth.currentUser
-        ? auth.currentUser
-        : (await signInWithEmailAndPassword(auth, email, password)).user;
+  // const resendVerification = async () => {
+  //   setStatus("");
+  //   setLoading(true);
+  //   try {
+  //     // ถ้า sign-in อยู่แล้ว ใช้ currentUser เลย
+  //     const user = auth.currentUser
+  //       ? auth.currentUser
+  //       : (await signInWithEmailAndPassword(auth, email, password)).user;
 
-      if (user.emailVerified) {
-        setStatus("Your email is already verified.");
-      } else {
-        await sendEmailVerification(user, {
-          url: `${window.location.origin}/auth/action?next=${encodeURIComponent("/home")}`,
-          handleCodeInApp: false,
-        });
-        setStatus("Verification email resent. Please check your inbox.");
-        navigate(`/auth/action?pending=1&next=${encodeURIComponent("/home")}`, { replace: true });
-      }
-    } catch (err) {
-      setStatus(mapFirebaseError(err?.code));
-    } finally {
-      setLoading(false);
-    }
-  };
+  //     if (user.emailVerified) {
+  //       setStatus("Your email is already verified.");
+  //     } else {
+  //       await sendEmailVerification(user, {
+  //         url: `${window.location.origin}/auth/action?next=${encodeURIComponent("/home")}`,
+  //         handleCodeInApp: false,
+  //       });
+  //       setStatus("Verification email resent. Please check your inbox.");
+  //       navigate(`/auth/action?pending=1&next=${encodeURIComponent("/home")}`, { replace: true });
+  //     }
+  //   } catch (err) {
+  //     setStatus(mapFirebaseError(err?.code));
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
 
   return (
     <div className="auth-screen">
@@ -181,9 +181,9 @@ export default function Login() {
         </button>
 
         {/* ปุ่ม resend ใช้ได้ทั้งกรณีแสดงข้อความ หรือผู้ใช้กดเอง */}
-        <button type="button" className="auth-btn" onClick={resendVerification} disabled={loading}>
+        {/* <button type="button" className="auth-btn" onClick={resendVerification} disabled={loading}>
           Resend verification email
-        </button>
+        </button> */}
 
         <p className="text-muted">
           Don't have an account? <Link to="/register">Sign Up</Link>

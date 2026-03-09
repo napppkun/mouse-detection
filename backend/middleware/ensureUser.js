@@ -26,12 +26,10 @@ export const ensureUser = async (req, res, next) => {
     // ยังไม่มีเอกสาร → สร้างใหม่
     let firstName = "";
     let lastName = "";
-    let photoURL = "";
 
     try {
       const fbUser = await admin.auth().getUser(uid);
       const displayName = fbUser.displayName || "";
-      photoURL = fbUser.photoURL || "";
 
       const parts = displayName.trim().split(/\s+/);
       firstName = parts[0] || "";
@@ -45,7 +43,6 @@ export const ensureUser = async (req, res, next) => {
       firebaseUid: uid,
       firstName,
       lastName,
-      photoURL,
       provider: provider || "",
       emailVerified: !!emailVerified,
     });
@@ -56,3 +53,5 @@ export const ensureUser = async (req, res, next) => {
     next(e);
   }
 };
+
+export default ensureUser;
