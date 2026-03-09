@@ -27,3 +27,8 @@
 /frontend/.env.production
 __pycache__
 .venv
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/
