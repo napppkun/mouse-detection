@@ -23,6 +23,11 @@ def get_device():
 
 DEVICE = get_device()
 
+# FRAME SKIP CONFIG
+# หนูเคลื่อนที่ช้า วิเคราะห์แค่ ANALYSIS_FPS เฟรมต่อวินาทีก็พอ
+ANALYSIS_FPS = int(os.getenv("ANALYSIS_FPS", "5"))
+
+
 def process_video_analysis(
     video_path: str,
     maze_type: str,
@@ -35,6 +40,11 @@ def process_video_analysis(
 ):
     """
     core pipeline: open video → YOLO seg → centroid → region/time → overlay → excel
+
+    การเปลี่ยนแปลงจากเดิม:
+      - เพิ่ม frame skip: YOLO inference เฉพาะทุก `skip` เฟรม
+        → ผลลัพธ์วิดีโอ overlay ยังครบทุก frame (ใช้ centroid/region เดิม)
+        → เวลาที่คำนวณยังถูกต้อง (นับจาก dt ของทุกเฟรม ไม่ใช่แค่ที่ inference)
     """
     BASE_DIR = os.path.dirname(__file__)
     MODEL_PATH = os.path.join(BASE_DIR, "model", "rat_seg.pt")
@@ -71,6 +81,11 @@ def process_video_analysis(
     if end_frame <= start_frame:
         end_frame = min(start_frame + int(10 * fps), total_frames)
 
+    # ─── คำนวณ skip ───
+    # skip = ทุกกี่เฟรมถึงจะ inference 1 ครั้ง
+    # เช่น fps=30, ANALYSIS_FPS=5 → skip=6 (inference เฉพาะเฟรมที่ 0,6,12,...)
+    skip = max(1, round(fps / ANALYSIS_FPS))
+
     # เตรียม VideoWriter (robust บน Windows)
     ok, sample = cap.read()
     if not ok:
@@ -106,9 +121,13 @@ def process_video_analysis(
 
     trajectory = []
     last_sample_time = 0.0
-    SAMPLE_INTERVAL = 0.5  # วินาที
+    SAMPLE_INTERVAL = 1.0  # วินาที
 
     prev_region = None
+    # centroid สุดท้ายที่ inference เจอ (ใช้ซ้ำในเฟรมที่ skip)
+    last_centroid = None
+    last_det_region = None
+
     frame_idx = start_frame
     total_steps = max(1, end_frame - start_frame)
 
@@ -118,33 +137,43 @@ def process_video_analysis(
             break
 
         current_time = (frame_idx - start_frame) * dt
+        steps_done = frame_idx - start_frame
 
-        # detect/track
-        det = tracker.detect_frame(frame)
-        centroid = None
-        best = None
-        if det:
-            best = max(det.items(), key=lambda kv: kv[1].get("confidence", 0))[1]
-            m = best.get("mask")
-            if m is not None:
-                centroid = get_position_from_segment(m)
-            else:
-                x1, y1, x2, y2 = best.get("bbox") or (0, 0, 0, 0)
-                centroid = ((x1 + x2) // 2, (y1 + y2) // 2)
+        # ─── ตัดสินใจว่า inference เฟรมนี้หรือเปล่า ───
+        should_infer = (steps_done % skip == 0)
 
-        # region/time logic
-        region = maze.get_region_for_position(centroid)
+        if should_infer:
+            det = tracker.detect_frame(frame)
+            centroid = None
+            if det:
+                best = max(det.items(), key=lambda kv: kv[1].get("confidence", 0))[1]
+                m = best.get("mask")
+                if m is not None:
+                    centroid = get_position_from_segment(m)
+                else:
+                    x1, y1, x2, y2 = best.get("bbox") or (0, 0, 0, 0)
+                    centroid = ((x1 + x2) // 2, (y1 + y2) // 2)
+
+            # region จาก inference ใหม่
+            region = maze.get_region_for_position(centroid)
+            last_centroid = centroid
+            last_det_region = region
+        else:
+            # ใช้ centroid/region จาก inference ล่าสุด (ประหยัด GPU)
+            centroid = last_centroid
+            region = last_det_region
+
+        # ─── นับเวลา (ทุกเฟรม เพื่อให้ถูกต้อง) ───
         if region:
             timers[region] = timers.get(region, 0.0) + dt
 
-        # เก็บ trajectory
+        # ─── trajectory sampling ───
         should_sample = (
-            (current_time - last_sample_time >= SAMPLE_INTERVAL) or  # ทุก 1 วิ
-            (prev_region != region) or                                # เปลี่ยน region
-            (frame_idx == start_frame) or                            # จุดแรก
-            (cap.get(cv2.CAP_PROP_POS_FRAMES) >= end_frame - 1)      # จุดสุดท้าย
+            (current_time - last_sample_time >= SAMPLE_INTERVAL) or
+            (prev_region != region) or
+            (frame_idx == start_frame) or
+            (cap.get(cv2.CAP_PROP_POS_FRAMES) >= end_frame - 1)
         )
-        
         if should_sample and centroid:
             trajectory.append({
                 "t": round(current_time, 2),
@@ -154,16 +183,18 @@ def process_video_analysis(
             })
             last_sample_time = current_time
 
-        if maze_type == "ymaze":
+        # ─── Y-maze arm entry (เฉพาะเฟรม inference เพื่อกัน double-count) ───
+        if maze_type == "ymaze" and should_infer:
             def is_arm(z): return z in ("A", "B", "C")
             if prev_region != region and region and is_arm(region):
                 arm_sequence.append(region)
                 entries[region] = entries.get(region, 0) + 1
 
+        # ─── EPM raw time ───
         if maze_type == "epm" and region in epm_raw_times:
             epm_raw_times[region] += dt
 
-        # draw overlay
+        # ─── draw overlay (ทุกเฟรม ให้วิดีโอ output ลื่นปกติ) ───
         if centroid is not None:
             cv2.circle(frame, centroid, 6, (0, 0, 255), -1)
         frame = maze.draw_maze(frame, active_region=region, timers=timers)
@@ -172,10 +203,10 @@ def process_video_analysis(
         prev_region = region
         frame_idx += 1
 
-        # progress hook
-        if progress_hook and (frame_idx - start_frame) % int(max(1, fps)) == 0:
-            pct = (frame_idx - start_frame) / total_steps
-            progress_hook(min(0.99, max(0.0, float(pct))))  # 0.00–0.99 ระหว่างประมวลผล
+        # ─── progress hook (throttle: ทุก 1 วินาทีของวิดีโอ) ───
+        if progress_hook and steps_done % int(max(1, fps)) == 0:
+            pct = steps_done / total_steps
+            progress_hook(min(0.99, max(0.0, float(pct))))
 
     cap.release()
     vw.release()
@@ -183,16 +214,14 @@ def process_video_analysis(
     # trajectory metadata
     trajectory_metadata = {
         "trajectory": trajectory,
-        "videoDimensions": {
-            "width": w,
-            "height": h
-        },
+        "videoDimensions": {"width": w, "height": h},
         "sampleInterval": SAMPLE_INTERVAL,
         "totalPoints": len(trajectory),
         "duration": round((frame_idx - start_frame) / fps, 2)
     }
 
-    # --------- Excel ----------
+    # ─────────────────────────── Excel ───────────────────────────
+
     # EPM analysis
     if maze_type == "epm":
         open1 = epm_raw_times.get("open_arm_1", 0.0)
@@ -240,31 +269,26 @@ def process_video_analysis(
 
     # YMaze analysis
     elif maze_type == "ymaze":
-        # ----- สร้าง alternation แบบเลื่อนหน้าต่าง 3 รายการล่าสุด -----
         n = len(arm_sequence)
-        alternation_results = [None] * n  # สองตำแหน่งแรกจะเป็น "" ตอน export
+        alternation_results = [None] * n
 
         no_of_alternation = 0
-        # เริ่มคิดได้ตั้งแต่ entry ลำดับ 3 (index 2 แบบ 0-based)
         for i in range(2, n):
-            triplet = arm_sequence[i-2:i+1]  # [i-2, i-1, i]
-            # alternation = 1 เมื่อทั้งสามต่างกันหมด (A,B,C ครบ)
+            triplet = arm_sequence[i-2:i+1]
             is_alt = 1 if len(set(triplet)) == 3 else 0
             alternation_results[i] = is_alt
             if is_alt:
                 no_of_alternation += 1
 
-        # ตาราง Sequence: แถวต่อลำดับ entry
         rows = []
         for idx, (arm, alt) in enumerate(zip(arm_sequence, alternation_results), start=1):
             display_alt = "" if alt is None else alt
             rows.append({"entry": idx, "arm": arm, "alternation": display_alt})
 
         total_entries = len(arm_sequence)
-        denom = max(1, total_entries - 2)  # ตามสูตรจริง
+        denom = max(1, total_entries - 2)
         alternation_percent = (no_of_alternation / denom) * 100.0
 
-        # ---- เวลาที่อยู่ในแต่ละแขน ----
         A_time = round(timers.get("A", 0.0), 2)
         B_time = round(timers.get("B", 0.0), 2)
         C_time = round(timers.get("C", 0.0), 2)
@@ -272,17 +296,13 @@ def process_video_analysis(
         excel_path = os.path.join("scripts", "results", "excel", f"ymaze_results_{ts}.xlsx")
         os.makedirs(os.path.dirname(excel_path), exist_ok=True)
 
-        # สร้าง sequence rows สำหรับเก็บลง result ด้วย
         sequence_rows = []
         for idx, (arm, alt) in enumerate(zip(arm_sequence, alternation_results), start=1):
             display_alt = "" if alt is None else alt
             sequence_rows.append({"entry": idx, "arm": arm, "alternation": display_alt})
 
         with pd.ExcelWriter(excel_path, engine="openpyxl") as w:
-            # 1) sequence
             pd.DataFrame(sequence_rows).to_excel(w, index=False, sheet_name="Sequence")
-
-            # 2) summary (ตาม requirement ใหม่)
             pd.DataFrame([{
                 "A_entries": entries.get("A", 0),
                 "B_entries": entries.get("B", 0),
@@ -295,7 +315,6 @@ def process_video_analysis(
                 "time_C": C_time,
             }]).to_excel(w, index=False, sheet_name="Summary")
 
-        # metrics ให้เป็น schema เดียวกับที่ Result collection คาดหวัง
         analysis_results = {
             "ymaze": {
                 "summary": {
@@ -324,21 +343,18 @@ def process_video_analysis(
             "total_frames_processed": frame_idx - start_frame,
             "duration_processed": (frame_idx - start_frame) / fps,
         }
-    
+
     # MWM analysis
     elif maze_type == "mwm":
-        # เก็บเวลาสี่ควอดแรนต์
         Qs = ["Q1", "Q2", "Q3", "Q4"]
         q_times = {q: round(timers.get(q, 0.0), 3) for q in Qs}
 
-        # ตั้งค่า target: จากพารามฯ ถ้าไม่ส่งมาถือว่า "Q1" ตาม requirement
         tquad = (target_quadrant or "Q1").upper()
         if tquad not in Qs:
             tquad = "Q1"
 
         target_time = round(q_times.get(tquad, 0.0), 3)
 
-        # export Excel
         excel_path = os.path.join("scripts", "results", "excel", f"mwm_results_{ts}.xlsx")
         os.makedirs(os.path.dirname(excel_path), exist_ok=True)
         with pd.ExcelWriter(excel_path, engine="openpyxl") as w:
@@ -368,6 +384,6 @@ def process_video_analysis(
             "total_frames_processed": frame_idx - start_frame,
             "duration_processed": round((frame_idx - start_frame) / fps, 3),
         }
-        
+
     else:
         raise ValueError("Unsupported maze type")
