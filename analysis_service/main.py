@@ -348,7 +348,15 @@ def _process_one_item(maze: str, item: Item) -> dict:
 
         notify_video_report(job_id, "processed", result_urls=result_urls, metrics=metrics, run_id=run_id)
 
-        mark_done(job_id, run_id)
+        mark_done(
+            job_id,
+            run_id=run_id,
+            metrics=metrics,
+            result_urls={
+                "processedVideo": video_url,
+                "excelFile": excel_url,
+            },
+        )
         push_progress(job_id, 1.0, "processed", "done", run_id=run_id)
 
         return {
@@ -526,6 +534,7 @@ def run_analysis_task(video_id, video_path, maze_type, bounding_boxes,
                 progress_hook=hook,
                 tracker=tracker,
                 target_quadrant=target_quadrant,
+                job_id=job_id,
             )
 
         video_url = upload_to_gcs(results["output_video"], "results/videos")
@@ -603,7 +612,6 @@ def download_result(video_id: str, filetype: str):
 
 
 # ─────────────── Report endpoint ───────────────
-
 @app.post("/report/test")
 def make_test_report(req: TestReportReq):
     if req.secret != PROGRESS_SECRET:
@@ -753,37 +761,28 @@ def make_test_report(req: TestReportReq):
         url = upload_to_gcs(out_path, "reports")
         return {"ok": True, "url": url}
 
-
-# ─────────────── RunPod / Health ───────────────
-
-@app.post("/runsync")
-async def runsync_handler(request: dict):
-    """RunPod serverless handler"""
-    input_data = request.get("input", {})
-    job_id = input_data.get("job_id")
-    video_url = input_data.get("video_url")
-    maze_type = _norm_maze(input_data.get("maze_type", ""))
-
-    os.environ["MONGO_URI"] = input_data.get("mongo_uri", os.getenv("MONGO_URI", ""))
-    os.environ["GCS_BUCKET"] = input_data.get("gcs_bucket", os.getenv("GCS_BUCKET", ""))
-    os.environ["PROGRESS_SECRET"] = input_data.get("progress_secret", os.getenv("PROGRESS_SECRET", ""))
-    os.environ["BACKEND_URL"] = input_data.get("backend_url", os.getenv("BACKEND_URL", ""))
-
-    try:
-        item = Item(
-            id=job_id,
-            src=video_url,
-            boxes=[Box(**b) for b in input_data.get("bounding_boxes", [])],
-            startSec=float(input_data.get("start_time", 0)),
-            endSec=input_data.get("end_time"),
-            targetQuadrant=input_data.get("target_quadrant"),
+@app.get("/results/{job_id}")
+async def get_full_results(job_id: str):
+    """
+    คืนผลลัพธ์เต็มของ job — ใช้โดย backend ตอน recover
+    เมื่อ webhook หายแต่ Modal ประมวลผลเสร็จแล้ว
+    """
+    job = get_job(job_id)
+    if not job or job.get("status") == "unknown":
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.get("status") != "processed":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Job not ready (status: {job.get('status', 'unknown')})"
         )
-        result = _process_one_item(maze_type, item)
-        return {"output": result}
-    except Exception as e:
-        logger.exception("RunPod handler failed")
-        return {"output": {"status": "failed", "job_id": job_id, "error": str(e)}}
 
+    return {
+        "status": "processed",
+        "run_id": job.get("runId"),
+        "analysis_results": job.get("metrics", {}),
+        "video_url": job.get("result_urls", {}).get("processedVideo", ""),
+        "excel_url": job.get("result_urls", {}).get("excelFile", ""),
+    }
 
 @app.get("/healthz")
 def healthz():

@@ -37,6 +37,7 @@ def process_video_analysis(
     progress_hook: Optional[Callable[[float], None]] = None,
     tracker=None,
     target_quadrant: Optional[str] = None,
+    job_id: Optional[str] = None,
 ):
     """
     core pipeline: open video → YOLO seg → centroid → region/time → overlay → excel
@@ -93,7 +94,8 @@ def process_video_analysis(
         raise ValueError("Cannot read first frame")
 
     h, w = sample.shape[:2]
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    _uid = (job_id or "")[-8:] or datetime.now().strftime("%f")  # 8 ตัวท้ายของ job_id
+    ts = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{_uid}"
     out_dir = os.path.join("scripts", "results", "videos")
     os.makedirs(out_dir, exist_ok=True)
 

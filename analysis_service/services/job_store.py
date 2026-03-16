@@ -131,9 +131,18 @@ def mark_processing(job_id: str, percent: float = 0.0, run_id: Optional[int] = N
     upsert_job(job_id, data)
 
 
-def mark_done(job_id: str, run_id: Optional[int] = None) -> None:
+def mark_done(
+    job_id: str,
+    run_id: Optional[int] = None,
+    metrics: Optional[dict] = None,
+    result_urls: Optional[dict] = None,
+) -> None:
     """Convenience: mark job as processed/done."""
     data: dict = {"status": "processed", "percent": 1.0}
     if run_id is not None:
         data["runId"] = run_id
+    if metrics is not None:
+        data["metrics"] = metrics
+    if result_urls is not None:
+        data["result_urls"] = result_urls
     upsert_job(job_id, data)

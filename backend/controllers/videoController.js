@@ -805,3 +805,69 @@ export const getTrajectoryByVideo = async (req, res) => {
   }
 };
 
+export const recoverVideo = async (req, res) => {
+  try {
+    const ownerUid = req.user.ownerUid || req.user.uid;
+    const { id: videoId } = req.params;
+    const { testId, mazeType } = req.body || {};
+
+    // 1) เช็คว่า video นี้มีอยู่จริงและเป็นของ user คนนี้
+    const vdoc = await Video.findOne({ _id: videoId, ownerUid })
+      .select("status test mouseCode")
+      .lean();
+    if (!vdoc) {
+      return res.status(404).json({ ok: false, message: "Video not found" });
+    }
+    if (vdoc.status === "processed") {
+      return res.json({ ok: true, message: "Already processed, nothing to recover" });
+    }
+
+    // 2) ดึง job state จาก Modal — ถ้ายังไม่เสร็จให้แจ้ง error ทันที
+    const progressRes = await axios.get(
+      `${ANALYSIS_API}/progress/${videoId}`,
+      { timeout: 10000 }
+    );
+    const jobState = progressRes.data;
+
+    if (jobState?.status !== "processed") {
+      return res.status(409).json({
+        ok: false,
+        message: `Analysis not ready yet (Modal status: ${jobState?.status || "unknown"})`,
+      });
+    }
+
+    // 3) ดึงผลเต็มจาก Modal
+    const resultsRes = await axios.get(
+      `${ANALYSIS_API}/results/${videoId}`,
+      { timeout: 15000 }
+    );
+    const fullResult = resultsRes.data;
+    if (!fullResult) {
+      return res.status(502).json({ ok: false, message: "No result data from analysis service" });
+    }
+
+    // 4) ยิง internalReport ของตัวเองเพื่อบันทึก ไม่ต้อง duplicate logic
+    const webhookPayload = {
+      secret: PROGRESS_SECRET,
+      id: videoId,
+      status: "processed",
+      runId: fullResult.run_id ?? fullResult.runId,
+      metrics: fullResult.analysis_results || fullResult.metrics || {},
+      resultUrls: {
+        processedVideo: fullResult.video_url || fullResult.processedVideoUrl || "",
+        excelFile: fullResult.excel_url || fullResult.excelUrl || "",
+      },
+    };
+
+    const internalUrl = `${process.env.BACKEND_URL || "http://localhost:5000"}/api/videos/internal/report`;
+    await axios.post(internalUrl, webhookPayload, {
+      headers: { "Content-Type": "application/json" },
+      timeout: 30000,
+    });
+
+    return res.json({ ok: true, message: "Recovery successful — results saved", videoId });
+  } catch (e) {
+    console.error("recoverVideo error:", e?.response?.data || e?.message || e);
+    return res.status(500).json({ ok: false, message: e?.response?.data?.message || e.message });
+  }
+};

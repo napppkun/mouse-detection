@@ -424,7 +424,7 @@ export default function TemplateDetail() {
             }
         }
         if (timeLimitSec !== "" && (!Number.isFinite(Number(timeLimitSec)) || Number(timeLimitSec) <= 0)) {
-            setError("Time limit must be a positive number.");
+            setError("Observation time must be a positive number.");
             return;
         }
 
@@ -846,7 +846,7 @@ export default function TemplateDetail() {
                 </div>
 
                 <div className="form-row onecol" style={{ marginTop: 12 }}>
-                    <label>Time Limit (seconds)</label>
+                    <label>Observation Time (seconds)</label>
                     <div className="input-group">
                         <input
                             type="number"
