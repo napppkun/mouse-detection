@@ -13,6 +13,7 @@ export default function AdminUsers() {
   const [users, setUsers] = useState([]);
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
+  const [busyEmail, setBusyEmail] = useState("");
 
   async function fetchUsers() {
     const u = auth.currentUser;
@@ -58,13 +59,56 @@ export default function AdminUsers() {
     }
   }
 
+  async function handleDelete(email) {
+    try {
+      const confirmDelete = window.confirm(`Delete user ${email}?`);
+      if (!confirmDelete) return;
+
+      setBusyEmail(email);
+
+      const token = await auth.currentUser.getIdToken(true);
+
+      const res = await fetch(`${BACKEND_URL}/api/admin/delete-user`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ email }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.message || "Delete failed");
+
+      toast.success("User deleted");
+      await fetchUsers();
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setBusyEmail("");
+    }
+  }
+
   return (
     <div className="app-main" style={{ width: "100%" }}>
       <div className="main-wrap">
         <div className="card">
           <div className="card-head">
-            <h3 className="card-title">All Users</h3>
-            <input className="input" placeholder="search by email, name" value={q} onChange={(e) => setQ(e.target.value)} />
+            <h3 className="card-title">Manage Users</h3>
+            <div className="search-wrap" style={{ margin: 0, minWidth: 340 }}>
+              <input className="search-pill" placeholder="Search by email, name" value={q} onChange={(e) => setQ(e.target.value)} />
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="search-icon"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <circle cx="11" cy="11" r="7"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+            </div>
           </div>
 
           <div style={{ overflowX: "auto" }}>
@@ -89,14 +133,29 @@ export default function AdminUsers() {
                     </td>
                     <td style={{ display: "flex", gap: 8 }}>
                       {u.role === "admin" ? (
-                        <button className="btn danger" disabled={busy} onClick={() => grant(u.email, false)}>
+                        <button
+                          className="btn danger"
+                          disabled={busy}
+                          onClick={() => grant(u.email, false)}
+                        >
                           Remove admin
                         </button>
                       ) : (
-                        <button className="btn primary" disabled={busy} onClick={() => grant(u.email, true)}>
+                        <button
+                          className="btn primary"
+                          disabled={busy}
+                          onClick={() => grant(u.email, true)}
+                        >
                           Make admin
                         </button>
                       )}
+                      <button
+                        className="btn danger"
+                        disabled={busyEmail === u.email}
+                        onClick={() => handleDelete(u.email)}
+                      >
+                        Delete user
+                      </button>
                     </td>
                   </tr>
                 ))}
