@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { verifyFirebase } from "../middleware/verifyFirebase.js";
-import ensureUser from "../middleware/ensureUser.js";
+import { ensureUser } from "../middleware/ensureUser.js";
 import { saveFirebaseUser } from "../controllers/authController.js";
 import { getMe, updateMe } from "../controllers/userController.js";
 
