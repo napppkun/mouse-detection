@@ -12,6 +12,8 @@ BASE_ENV = {
     "PUSH_INTERVAL": "5.0",
 }
 
+model_volume = modal.Volume.from_name("mouse-model", create_if_missing=True)
+
 image = (
     modal.Image.debian_slim(python_version="3.10")
     .apt_install([
@@ -42,6 +44,7 @@ GPU_TYPE = "T4"
     min_containers=1,
     max_containers=10,
     secrets=[modal.Secret.from_name("mouse-secrets")],
+    volumes={"/app/scripts/model": model_volume},
 )
 @modal.asgi_app()
 def fastapi_app():
