@@ -24,7 +24,7 @@ export default function Header({ onToggleSidebar }) {
       <div style={{display:"flex",alignItems:"center",gap:12}}>
         <button className="burger" onClick={onToggleSidebar}><Menu size={18}/></button>
         <div className="brand">
-          <span className="logo">LRD</span>
+          <span className="logo">Mouse Analysis</span>
           <small>- system</small>
         </div>
       </div>
