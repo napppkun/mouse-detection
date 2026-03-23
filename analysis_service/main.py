@@ -64,7 +64,7 @@ TRACKER_INSTANCES = int(os.getenv("TRACKER_INSTANCES") or os.getenv("GPU_WORKERS
 CPU_WORKERS = int(os.getenv("CPU_WORKERS", "2"))
 MAX_WORKERS = TRACKER_INSTANCES if HAS_CUDA else CPU_WORKERS
 DEVICE = "cuda" if HAS_CUDA else "cpu"
-MODEL_PATH = os.path.join("scripts", "model", "rat_seg.pt")
+MODEL_PATH = os.environ.get("MODEL_PATH", os.path.join("scripts", "model", "rat_seg.pt"))
 
 # ─── Thread pool ───
 EXECUTOR = ThreadPoolExecutor(max_workers=IO_WORKERS)

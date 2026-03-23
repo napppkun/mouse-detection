@@ -10,6 +10,7 @@ BASE_ENV = {
     "CPU_WORKERS": "2",
     "ANALYSIS_FPS": "5",
     "PUSH_INTERVAL": "5.0",
+    "MODEL_PATH": "/mnt/model/rat_seg.pt",
 }
 
 model_volume = modal.Volume.from_name("mouse-model", create_if_missing=True)
@@ -44,11 +45,14 @@ GPU_TYPE = "T4"
     min_containers=1,
     max_containers=10,
     secrets=[modal.Secret.from_name("mouse-secrets")],
-    volumes={"/app/scripts/model": model_volume},
+    volumes={"/mnt/model": model_volume},
 )
 @modal.asgi_app()
 def fastapi_app():
-    sys.path.append("/app")
+    import sys, os
+    sys.path.insert(0, "/app")
+
+    os.environ["MODEL_PATH"] = "/mnt/model/rat_seg.pt"
 
     sa_json = os.environ.get("GCP_SA_JSON")
     if sa_json and not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
