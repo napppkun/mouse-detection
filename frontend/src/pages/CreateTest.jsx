@@ -13,7 +13,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import "../styles/app.css";
 
 const API_BASE = window._env_?.BACKEND_URL || process.env.BACKEND_URL || "http://127.0.0.1:5000";
-const MAX_VIDEOS = 20;
+const MAX_VIDEOS = 10;
 
 export default function CreateTest({ onNext, onPrev }) {
   const navigate = useNavigate();
@@ -124,16 +124,32 @@ export default function CreateTest({ onNext, onPrev }) {
     const existed = new Set(
       (formData.videoPairsByGroup[groupId] || []).map((p) => p.video.name)
     );
+    const currentCount = (formData.videoPairsByGroup[groupId] || []).length;
+    const remaining = MAX_VIDEOS - currentCount;
+
+    if (remaining <= 0) {
+      alert(`Maximum ${MAX_VIDEOS} videos per group.`);
+      return;
+    }
+
     const toAdd = files
       .filter((f) => f.type.startsWith("video/"))
       .filter((f) => !existed.has(f.name))
-      .map((f) => ({ video: f, mouseCode: "", dailyRecordId: "" }));
+      .slice(0, remaining); // ตัดส่วนเกิน
+
+    if (files.length - toAdd.length > 0) {
+      alert(`Maximum ${MAX_VIDEOS} videos per group. Some files were skipped.`);
+    }
+
     if (toAdd.length) {
       setFormData((p) => ({
         ...p,
         videoPairsByGroup: {
           ...p.videoPairsByGroup,
-          [groupId]: [...(p.videoPairsByGroup[groupId] || []), ...toAdd],
+          [groupId]: [
+            ...(p.videoPairsByGroup[groupId] || []),
+            ...toAdd.map((f) => ({ video: f, mouseCode: "", dailyRecordId: "" })),
+          ],
         },
       }));
     }
@@ -305,12 +321,12 @@ export default function CreateTest({ onNext, onPrev }) {
     formData.behaviorTest &&
     formData.date &&
     formData.groups.length > 0 &&
-    (formData.behaviorTest !== "MorrisWaterMaze" ||
-      !!formData.targetQuadrant) &&
+    (formData.behaviorTest !== "MorrisWaterMaze" || !!formData.targetQuadrant) &&
     allPairs.length > 0 &&
     formData.groups.every(
       (gid) =>
         (formData.videoPairsByGroup[gid] || []).length > 0 &&
+        (formData.videoPairsByGroup[gid] || []).length <= MAX_VIDEOS && // เพิ่มบรรทัดนี้
         (formData.videoPairsByGroup[gid] || []).every(
           (p) => p.mouseCode && p.dailyRecordId
         )
