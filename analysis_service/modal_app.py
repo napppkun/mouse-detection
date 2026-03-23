@@ -8,14 +8,31 @@ BASE_ENV = {
     "USE_CUDA": "1",
     "GPU_WORKERS": "1",
     "CPU_WORKERS": "2",
-    # ANALYSIS_FPS ควบคุมว่า inference กี่ fps (ค่าเริ่ม 5)
-    # เพิ่มได้ถ้าต้องการความแม่นยำขึ้น แต่จะช้าลง
     "ANALYSIS_FPS": "5",
-    # throttle push_progress HTTP call ทุก N วินาที (ค่าเริ่ม 5)
     "PUSH_INTERVAL": "5.0",
 }
 
-image = modal.Image.from_dockerfile("Dockerfile").env(BASE_ENV)
+image = (
+    modal.Image.from_registry(
+        "nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04",
+        add_python="3.10"
+    )
+    .apt_install([
+        "libgl1-mesa-glx",
+        "libglib2.0-0",
+        "libsm6",
+        "libxext6",
+        "libxrender-dev",
+        "libgomp1",
+        "wget",
+    ])
+    .pip_install_from_requirements("requirements.txt")
+    .add_local_dir(".", "/app")
+    .run_commands(
+        "mkdir -p /app/scripts/results/videos /app/scripts/results/excel"
+    )
+    .env(BASE_ENV)
+)
 
 GPU_TYPE = "T4"
 
@@ -23,10 +40,9 @@ GPU_TYPE = "T4"
     image=image,
     gpu=GPU_TYPE,
     memory="16Gi",
-    timeout=7200,           # 2 ชั่วโมง (วิดีโอยาวสุด)
-    scaledown_window=600,   # เพิ่มจาก 300 → 600: container อยู่นาน 10 นาทีหลังไม่มีงาน
-                            # ลด cold start เพราะไม่ต้องโหลด YOLO model บ่อย
-    min_containers=1,       # keep 1 container warm ตลอด
+    timeout=7200,
+    scaledown_window=600,
+    min_containers=1,
     max_containers=10,
     secrets=[modal.Secret.from_name("mouse-secrets")],
 )
@@ -34,7 +50,6 @@ GPU_TYPE = "T4"
 def fastapi_app():
     sys.path.append("/app")
 
-    # เขียน GCP service account JSON จาก secret
     sa_json = os.environ.get("GCP_SA_JSON")
     if sa_json and not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
         cred_path = "/tmp/gcp.json"
