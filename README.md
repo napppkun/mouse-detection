@@ -83,7 +83,7 @@ The system consists of three main modules:
 ### 1. Clone the Repository
 
 ```bash
-git clone <your-repository-url>
+git clone https://github.com/napppkun/mouse-detection.git
 cd <your-project-folder>
 ```
 
@@ -219,22 +219,6 @@ The system can generate:
   * Elevated Plus Maze
   * Y-Maze
   * Morris Water Maze
-
-
-
-## Future Improvements
-
-* Improve model robustness for non-ideal videos
-* Improve password reset and authentication flows
-* Add support for more experiment types
-* Extend admin management features
-* Improve result dashboards and analytics
-
-
-
-## Author
-
-This project was developed as part of a research project focused on automated mouse movement detection and behavioral analysis.
 
 
 
