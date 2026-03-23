@@ -33,3 +33,4 @@ __pycache__
 /playwright/.cache/
 /playwright/.auth/
 /.env
+/tests/.env
