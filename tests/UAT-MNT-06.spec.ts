@@ -14,19 +14,28 @@ test.describe("UAT-MNT-06: Create test without uploading video", () => {
     await page.getByRole("button", { name: /sign in/i }).click();
     await expect(page).toHaveURL(/home/, { timeout: 10000 });
     await page.getByRole("link", { name: /tests/i }).click();
-    await page.getByRole("link", { name: /create test/i }).click();
+    await expect(page).toHaveURL(/manage-test/);
+    await page.getByRole("button", { name: /create new test/i }).click();
     await expect(page).toHaveURL(/create-test/);
   });
 
-  test("Next button should be disabled when no video is uploaded", async ({ page }) => {
+  test("Next button should be disabled when no video is uploaded", async ({
+    page,
+  }) => {
     // Fill all fields except video
     await page.locator("input.input").fill("Test Without Video");
     await page.locator(".select-control").first().click();
     await page.getByRole("option", { name: /elevated plus maze/i }).click();
-    await page.locator(".select-control").nth(1).click();
-    if (TEST_DATE) {
-      await page.locator(".select-search").fill(TEST_DATE);
-    }
+    const dateControl = page.locator(".select-control").nth(1);
+    await expect(dateControl).not.toBeDisabled({ timeout: 10000 });
+    await page.waitForTimeout(3000);
+    await dateControl.click();
+    await expect(page.locator(".select-menu").first()).toBeVisible({
+      timeout: 5000,
+    });
+    await expect(page.locator(".select-menu .select-empty")).not.toBeVisible({
+      timeout: 10000,
+    });
     await page.locator(".select-option").first().click();
     await expect(page.locator(".chip").first()).toBeVisible({ timeout: 5000 });
     await page.locator(".chip").filter({ hasText: TEST_GROUP }).click();

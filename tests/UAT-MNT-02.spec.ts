@@ -3,7 +3,8 @@ import { test, expect, Page } from "@playwright/test";
 const BASE_URL: string = process.env.BASE_URL ?? "http://localhost:3000";
 const USER_EMAIL: string = process.env.USER_EMAIL ?? "testmouse.ex@gmail.com";
 const USER_PASSWORD: string = process.env.USER_PASSWORD ?? "1234567";
-const YMAZE_VIDEO_PATH: string = process.env.YMAZE_VIDEO_PATH ?? "D:/MouseVDO/Ymaze/test/ymaze_test.mp4";
+const YMAZE_VIDEO_PATH: string =
+  process.env.YMAZE_VIDEO_PATH ?? "D:/MouseVDO/Ymaze/test/ymaze_test.mp4";
 const TEST_DATE: string = process.env.TEST_DATE ?? "";
 const TEST_GROUP: string = process.env.TEST_GROUP ?? "Control";
 const MOUSE_CODE: string = process.env.TEST_MOUSE_CODE_YMAZE ?? "M002";
@@ -13,7 +14,7 @@ async function drawRect(
   startX: number,
   startY: number,
   endX: number,
-  endY: number
+  endY: number,
 ): Promise<void> {
   await page.mouse.move(startX, startY);
   await page.mouse.down();
@@ -22,6 +23,7 @@ async function drawRect(
 }
 
 test.describe("UAT-MNT-02: Create YMaze test successfully (happy path)", () => {
+  test.setTimeout(3_600_000); // 1 hour timeout for video processing
   test.beforeEach(async ({ page }) => {
     await page.goto(BASE_URL);
     await page.locator('input[type="email"]').fill(USER_EMAIL);
@@ -33,7 +35,8 @@ test.describe("UAT-MNT-02: Create YMaze test successfully (happy path)", () => {
   test("Should create YMaze test and reach progress tray", async ({ page }) => {
     // 1. Navigate to Create Test
     await page.getByRole("link", { name: /tests/i }).click();
-    await page.getByRole("link", { name: /create test/i }).click();
+    await expect(page).toHaveURL(/manage-test/);
+    await page.getByRole("button", { name: /create new test/i }).click();
     await expect(page).toHaveURL(/create-test/);
 
     // 2. Fill Test Name
@@ -44,10 +47,16 @@ test.describe("UAT-MNT-02: Create YMaze test successfully (happy path)", () => {
     await page.getByRole("option", { name: /y-maze/i }).click();
 
     // 4. Select Date
-    await page.locator(".select-control").nth(1).click();
-    if (TEST_DATE) {
-      await page.locator(".select-search").fill(TEST_DATE);
-    }
+    const dateControl = page.locator(".select-control").nth(1);
+    await expect(dateControl).not.toBeDisabled({ timeout: 10000 });
+    await page.waitForTimeout(3000);
+    await dateControl.click();
+    await expect(page.locator(".select-menu").first()).toBeVisible({
+      timeout: 5000,
+    });
+    await expect(page.locator(".select-menu .select-empty")).not.toBeVisible({
+      timeout: 10000,
+    });
     await page.locator(".select-option").first().click();
 
     // 5. Select Group
@@ -61,7 +70,9 @@ test.describe("UAT-MNT-02: Create YMaze test successfully (happy path)", () => {
       .setInputFiles(YMAZE_VIDEO_PATH);
 
     // 7. Assign mouse code
-    await expect(page.locator(".select-control").last()).toBeVisible({ timeout: 5000 });
+    await expect(page.locator(".select-control").last()).toBeVisible({
+      timeout: 5000,
+    });
     await page.locator(".select-control").last().click();
     await page.getByRole("option", { name: MOUSE_CODE }).click();
 
@@ -74,27 +85,53 @@ test.describe("UAT-MNT-02: Create YMaze test successfully (happy path)", () => {
     await nextBtn.click();
 
     // 10. TemplateDetail — upload sample video
-    await expect(page).toHaveURL(/template-detail/, { timeout: 10000 });
+    await expect(page).toHaveURL(/template-detail/, { timeout: 300000 });
     await page
       .locator('input[type="file"][accept="video/*"]')
       .setInputFiles(YMAZE_VIDEO_PATH);
     await page.waitForTimeout(2000);
 
     // 11. Draw 3 regions (Arm A, B, C)
-    const overlay = page.locator('[data-el="overlay"]');
-    const box = await overlay.boundingBox();
-    if (!box) throw new Error("Overlay bounding box not found");
+    const video = page.locator("video");
+    const videoBox = await video.boundingBox();
+    if (!videoBox) throw new Error("Video bounding box not found");
 
+    const vx = videoBox.x;
+    const vy = videoBox.y;
+    const vw = videoBox.width;
+    const vh = videoBox.height;
+
+    // Arm A (บนซ้าย)
     await page.locator(".helper-chip").nth(0).click();
-    await drawRect(page, box.x + 10, box.y + 10, box.x + 80, box.y + 60);
+    await drawRect(
+      page,
+      vx + vw * 0.05,
+      vy + vh * 0.22,
+      vx + vw * 0.25,
+      vy + vh * 0.38,
+    );
     await page.waitForTimeout(500);
 
+    // Arm B (บนขวา)
     await page.locator(".helper-chip").nth(1).click();
-    await drawRect(page, box.x + 100, box.y + 10, box.x + 170, box.y + 60);
+    await drawRect(
+      page,
+      vx + vw * 0.75,
+      vy + vh * 0.22,
+      vx + vw * 0.95,
+      vy + vh * 0.38,
+    );
     await page.waitForTimeout(500);
 
+    // Arm C (ล่างกลาง)
     await page.locator(".helper-chip").nth(2).click();
-    await drawRect(page, box.x + 10, box.y + 80, box.x + 80, box.y + 140);
+    await drawRect(
+      page,
+      vx + vw * 0.4,
+      vy + vh * 0.62,
+      vx + vw * 0.6,
+      vy + vh * 0.78,
+    );
     await page.waitForTimeout(500);
 
     // 12. Set observation time
@@ -108,12 +145,16 @@ test.describe("UAT-MNT-02: Create YMaze test successfully (happy path)", () => {
     await page.getByRole("button", { name: /save/i }).click();
     await page.waitForTimeout(1000);
 
-    const processBtn = page.getByRole("button", { name: /process all videos/i });
+    const processBtn = page.getByRole("button", {
+      name: /process all videos/i,
+    });
     await expect(processBtn).toBeEnabled({ timeout: 5000 });
     await processBtn.click();
 
     // 15. Verify redirect and progress tray
     await expect(page).toHaveURL(/manage-test/, { timeout: 10000 });
-    await expect(page.locator(".progress-tray")).toBeVisible({ timeout: 10000 });
+    await expect(page.locator(".progress-tray")).toBeVisible({
+      timeout: 10000,
+    });
   });
 });

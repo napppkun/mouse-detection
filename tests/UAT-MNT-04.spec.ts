@@ -12,11 +12,14 @@ test.describe("UAT-MNT-04: Create test with missing Test Name", () => {
     await page.getByRole("button", { name: /sign in/i }).click();
     await expect(page).toHaveURL(/home/, { timeout: 10000 });
     await page.getByRole("link", { name: /tests/i }).click();
-    await page.getByRole("link", { name: /create test/i }).click();
+    await expect(page).toHaveURL(/manage-test/);
+    await page.getByRole("button", { name: /create new test/i }).click();
     await expect(page).toHaveURL(/create-test/);
   });
 
-  test("Next button should be disabled when Test Name is empty", async ({ page }) => {
+  test("Next button should be disabled when Test Name is empty", async ({
+    page,
+  }) => {
     // Select behavioral test but leave name empty
     await page.locator(".select-control").first().click();
     await page.getByRole("option", { name: /elevated plus maze/i }).click();
