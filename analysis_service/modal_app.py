@@ -13,10 +13,7 @@ BASE_ENV = {
 }
 
 image = (
-    modal.Image.from_registry(
-        "nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04",
-        add_python="3.10"
-    )
+    modal.Image.debian_slim(python_version="3.10")
     .apt_install([
         "libgl1-mesa-glx",
         "libglib2.0-0",
@@ -27,7 +24,7 @@ image = (
         "wget",
     ])
     .pip_install_from_requirements("requirements.txt")
-    .add_local_dir(".", "/app")
+    .add_local_dir(".", remote_path="/app")
     .run_commands(
         "mkdir -p /app/scripts/results/videos /app/scripts/results/excel"
     )
