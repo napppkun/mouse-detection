@@ -24,11 +24,11 @@ image = (
         "wget",
     ])
     .pip_install_from_requirements("requirements.txt")
-    .add_local_dir(".", remote_path="/app")
     .run_commands(
         "mkdir -p /app/scripts/results/videos /app/scripts/results/excel"
     )
     .env(BASE_ENV)
+    .add_local_dir(".", remote_path="/app")
 )
 
 GPU_TYPE = "T4"
