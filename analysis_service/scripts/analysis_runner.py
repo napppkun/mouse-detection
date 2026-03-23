@@ -238,24 +238,24 @@ def process_video_analysis(
         os.makedirs(os.path.dirname(excel_path), exist_ok=True)
         with pd.ExcelWriter(excel_path, engine="openpyxl") as w:
             pd.DataFrame([{
-                "open_arm_1": round(open1, 2),
-                "open_arm_2": round(open2, 2),
-                "closed_arm_1": round(closed1, 2),
-                "closed_arm_2": round(closed2, 2),
-                "avg_open_arm": round(avg_open, 2),
-                "avg_closed_arm": round(avg_closed, 2),
-                "absolute_diff": round(abs_diff, 2),
+                "open_arm_1": round(open1, 3),
+                "open_arm_2": round(open2, 3),
+                "closed_arm_1": round(closed1, 3),
+                "closed_arm_2": round(closed2, 3),
+                "avg_open_arm": round(avg_open, 3),
+                "avg_closed_arm": round(avg_closed, 3),
+                "absolute_diff": round(abs_diff, 3),
             }]).to_excel(w, index=False, sheet_name="Summary")
 
         analysis_results = {
             "epm": {
-                "open_arm_1": round(open1, 2),
-                "open_arm_2": round(open2, 2),
-                "closed_arm_1": round(closed1, 2),
-                "closed_arm_2": round(closed2, 2),
-                "avg_open_arm": round(avg_open, 2),
-                "avg_closed_arm": round(avg_closed, 2),
-                "absolute_diff": round(abs_diff, 2),
+                "open_arm_1": round(open1, 3),
+                "open_arm_2": round(open2, 3),
+                "closed_arm_1": round(closed1, 3),
+                "closed_arm_2": round(closed2, 3),
+                "avg_open_arm": round(avg_open, 3),
+                "avg_closed_arm": round(avg_closed, 3),
+                "absolute_diff": round(abs_diff, 3),
             },
             "trajectory_metadata": trajectory_metadata,
         }
@@ -291,9 +291,9 @@ def process_video_analysis(
         denom = max(1, total_entries - 2)
         alternation_percent = (no_of_alternation / denom) * 100.0
 
-        A_time = round(timers.get("A", 0.0), 2)
-        B_time = round(timers.get("B", 0.0), 2)
-        C_time = round(timers.get("C", 0.0), 2)
+        A_time = round(timers.get("A", 0.0), 3)
+        B_time = round(timers.get("B", 0.0), 3)
+        C_time = round(timers.get("C", 0.0), 3)
 
         excel_path = os.path.join("scripts", "results", "excel", f"ymaze_results_{ts}.xlsx")
         os.makedirs(os.path.dirname(excel_path), exist_ok=True)
