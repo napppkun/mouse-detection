@@ -3,12 +3,14 @@ import { test, expect } from "@playwright/test";
 const BASE_URL: string = process.env.BASE_URL ?? "http://localhost:3000";
 const USER_EMAIL: string = process.env.USER_EMAIL ?? "testmouse.ex@gmail.com";
 const USER_PASSWORD: string = process.env.USER_PASSWORD ?? "1234567";
-const MWM_VIDEO_PATH: string = process.env.MWM_VIDEO_PATH ?? "D:/MouseVDO/MWM/test/mwm_test.mp4";
+const MWM_VIDEO_PATH: string =
+  process.env.MWM_VIDEO_PATH ?? "D:/MouseVDO/MWM/test/mwm_test.mp4";
 const TEST_DATE: string = process.env.TEST_DATE ?? "";
 const TEST_GROUP: string = process.env.TEST_GROUP ?? "Control";
 const MOUSE_CODE: string = process.env.TEST_MOUSE_CODE_MWM ?? "M003";
 
 test.describe("UAT-MNT-03: Create MWM test successfully (happy path)", () => {
+  test.setTimeout(3_600_000); // 1 hour timeout for video processing
   test.beforeEach(async ({ page }) => {
     await page.goto(BASE_URL);
     await page.locator('input[type="email"]').fill(USER_EMAIL);
@@ -20,7 +22,8 @@ test.describe("UAT-MNT-03: Create MWM test successfully (happy path)", () => {
   test("Should create MWM test and reach progress tray", async ({ page }) => {
     // 1. Navigate to Create Test
     await page.getByRole("link", { name: /tests/i }).click();
-    await page.getByRole("link", { name: /create test/i }).click();
+    await expect(page).toHaveURL(/manage-test/);
+    await page.getByRole("button", { name: /create new test/i }).click();
     await expect(page).toHaveURL(/create-test/);
 
     // 2. Fill Test Name
@@ -30,16 +33,24 @@ test.describe("UAT-MNT-03: Create MWM test successfully (happy path)", () => {
     await page.locator(".select-control").first().click();
     await page.getByRole("option", { name: /morris water maze/i }).click();
 
-    // 4. Select Target Quadrant: Q1 (appears after selecting MWM)
-    await expect(page.locator(".select-control").nth(3)).toBeVisible({ timeout: 3000 });
-    await page.locator(".select-control").nth(3).click();
+    // 4. Select Target Quadrant: Q1
+    await expect(page.locator(".select-control").nth(2)).toBeVisible({
+      timeout: 3000,
+    });
+    await page.locator(".select-control").nth(2).click();
     await page.getByRole("option", { name: "Q1" }).click();
 
     // 5. Select Date
-    await page.locator(".select-control").nth(1).click();
-    if (TEST_DATE) {
-      await page.locator(".select-search").fill(TEST_DATE);
-    }
+    const dateControl = page.locator(".select-control").nth(1);
+    await expect(dateControl).not.toBeDisabled({ timeout: 10000 });
+    await page.waitForTimeout(3000);
+    await dateControl.click();
+    await expect(page.locator(".select-menu").first()).toBeVisible({
+      timeout: 5000,
+    });
+    await expect(page.locator(".select-menu .select-empty")).not.toBeVisible({
+      timeout: 10000,
+    });
     await page.locator(".select-option").first().click();
 
     // 6. Select Group
@@ -53,7 +64,9 @@ test.describe("UAT-MNT-03: Create MWM test successfully (happy path)", () => {
       .setInputFiles(MWM_VIDEO_PATH);
 
     // 8. Assign mouse code
-    await expect(page.locator(".select-control").last()).toBeVisible({ timeout: 5000 });
+    await expect(page.locator(".select-control").last()).toBeVisible({
+      timeout: 5000,
+    });
     await page.locator(".select-control").last().click();
     await page.getByRole("option", { name: MOUSE_CODE }).click();
 
@@ -66,7 +79,7 @@ test.describe("UAT-MNT-03: Create MWM test successfully (happy path)", () => {
     await nextBtn.click();
 
     // 11. TemplateDetail — upload sample video
-    await expect(page).toHaveURL(/template-detail/, { timeout: 10000 });
+    await expect(page).toHaveURL(/template-detail/, { timeout: 300000 });
     await page
       .locator('input[type="file"][accept="video/*"]')
       .setInputFiles(MWM_VIDEO_PATH);
@@ -94,12 +107,16 @@ test.describe("UAT-MNT-03: Create MWM test successfully (happy path)", () => {
     await page.getByRole("button", { name: /save/i }).click();
     await page.waitForTimeout(1000);
 
-    const processBtn = page.getByRole("button", { name: /process all videos/i });
+    const processBtn = page.getByRole("button", {
+      name: /process all videos/i,
+    });
     await expect(processBtn).toBeEnabled({ timeout: 5000 });
     await processBtn.click();
 
     // 17. Verify redirect and progress tray
     await expect(page).toHaveURL(/manage-test/, { timeout: 10000 });
-    await expect(page.locator(".progress-tray")).toBeVisible({ timeout: 10000 });
+    await expect(page.locator(".progress-tray")).toBeVisible({
+      timeout: 10000,
+    });
   });
 });

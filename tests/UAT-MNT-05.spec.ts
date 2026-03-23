@@ -12,7 +12,8 @@ test.describe("UAT-MNT-05: Create test without selecting Behavioral Test", () =>
     await page.getByRole("button", { name: /sign in/i }).click();
     await expect(page).toHaveURL(/home/, { timeout: 10000 });
     await page.getByRole("link", { name: /tests/i }).click();
-    await page.getByRole("link", { name: /create test/i }).click();
+    await expect(page).toHaveURL(/manage-test/);
+    await page.getByRole("button", { name: /create new test/i }).click();
     await expect(page).toHaveURL(/create-test/);
   });
 
