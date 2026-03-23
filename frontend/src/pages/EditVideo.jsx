@@ -1215,13 +1215,6 @@ export default function EditVideo() {
                 </div>
               </div>
             )}
-
-            {/* Tip for MWM */}
-            {mazeType === "MorrisWaterMaze" && (
-              <div className="muted" style={{ marginTop: 8 }}>
-                Tip: Drag <strong>inside the ellipse</strong> to move. Drag the side/top small handle to resize X/Y. Drag the outer handle to rotate.
-              </div>
-            )}
           </div>
 
           {videoPairs?.length > 1 && (
