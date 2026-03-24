@@ -217,7 +217,7 @@ function drawTrajectoryPath(ctx, trajectory, scale, offsetX, offsetY, sampleInte
       const p1 = seg[i];
       const p2 = seg[i + 1];
 
-      ctx.strokeStyle = '#2563eb';
+      ctx.strokeStyle = '#eb259c';
       ctx.beginPath();
       ctx.moveTo(offsetX + p1.x * scale, offsetY + p1.y * scale);
       ctx.lineTo(offsetX + p2.x * scale, offsetY + p2.y * scale);
@@ -232,7 +232,7 @@ function drawTrajectoryPath(ctx, trajectory, scale, offsetX, offsetY, sampleInte
   ctx.arc(
     offsetX + start.x * scale,
     offsetY + start.y * scale,
-    10, 0, Math.PI * 2
+    30, 0, Math.PI * 2
   );
   ctx.fill();
 
@@ -243,17 +243,17 @@ function drawTrajectoryPath(ctx, trajectory, scale, offsetX, offsetY, sampleInte
   ctx.arc(
     offsetX + end.x * scale,
     offsetY + end.y * scale,
-    10, 0, Math.PI * 2
+    30, 0, Math.PI * 2
   );
   ctx.fill();
 
   // Labels
   ctx.fillStyle = '#fff';
-  ctx.font = 'bold 10px sans-serif';
+  ctx.font = 'bold 30px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('S', offsetX + start.x * scale, offsetY + start.y * scale);
-  ctx.fillText('E', offsetX + end.x * scale, offsetY + end.y * scale);
+  ctx.fillText('Start', offsetX + start.x * scale, offsetY + start.y * scale);
+  ctx.fillText('End', offsetX + end.x * scale, offsetY + end.y * scale);
 }
 
 function drawHeatmap(ctx, trajectory, videoW, videoH, scale, offsetX, offsetY) {
