@@ -249,7 +249,7 @@ function drawTrajectoryPath(ctx, trajectory, scale, offsetX, offsetY, sampleInte
 
   // Labels
   ctx.fillStyle = '#fff';
-  ctx.font = 'bold 30px sans-serif';
+  ctx.font = 'bold 20px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText('Start', offsetX + start.x * scale, offsetY + start.y * scale);
